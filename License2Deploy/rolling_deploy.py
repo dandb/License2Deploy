@@ -21,11 +21,6 @@ def healthcheck_new_instances():
     """ AWS Call: Check whether the new instances are working good """
     return True
 
-
-def update_ami_id_with_last_successfull():
-    """ AWS Call: As health check failed, update the ami_id with the last successfull one """
-    pass
-
 def retrieve_auto_scaling_group(self, app_name, project_name, environment):
     """ AWS Call: retrieve the Auto Scaling Group by Tag """
     auto_scaling_groups = self.aws_connection.get_all_groups();
