@@ -32,9 +32,9 @@ def retrieve_auto_scaling_group(app_name, environment):
 
 def filter_auto_scaling_group(auto_scaling_groups, app_name, project_name, environment):
     """ Filter out the correct auto scaling group """
-    pattern = app_name + "-backend-" + environment+ "-" + app_name + project_name + "ASG*"
+    pattern = app_name + "-backend-" + environment+ "-" + app_name + project_name
     for auto_scaling_group in auto_scaling_groups:
-        if (re.match(pattern, auto_scaling_group.name)):
+        if (auto_scaling_group.name.find(pattern) > -1):
             return auto_scaling_group
         
 def wait_for_new_instances_to_spun_up():
