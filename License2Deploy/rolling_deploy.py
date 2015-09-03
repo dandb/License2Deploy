@@ -1,5 +1,6 @@
 import boto.ec2.autoscale as asg
-from _warnings import filters
+import re
+
 
 
 def return_autoscalinggroup_desired_size(auto_scaling_group):
@@ -24,24 +25,28 @@ def update_ami_id_with_last_successfull():
     """ AWS Call: As health check failed, update the ami_id with the last successfull one """
     pass
 
-def retrieve_auto_scaling_group_by_tagname(tag_name, tag_value):
+def retrieve_auto_scaling_group(app_name, environment):
     """ AWS Call: retrieve the Auto Scaling Group by Tag """
-    tag_name = "cloud"
-    tag_value = "dev-cirrus-cache-microservice"
-    asg_connection = asg.connect_to_region("us-east-1")
-    all_tags = asg_connection.get_all_tags()
-    auto_scaling_group_id = ""
-    for tag in all_tags:
-        if ((tag.key == tag_name) and (tag.value == tag_value)) :
-            auto_scaling_group_id = tag.resource_id
-    auto_scalling_group = asg_connection.get_all_groups(names=[auto_scaling_group_id])
-    return auto_scalling_group
-    
+    auto_scaling_groups = asg.connect_to_region("us-east-1").get_all_groups();
+    return filter_auto_scaling_group(auto_scaling_groups, app_name, environment)
+
+def filter_auto_scaling_group(auto_scaling_groups, app_name, project_name, environment):
+    """ Filter out the correct auto scaling group """
+    pattern = app_name + "-backend-" + environment+ "-" + app_name + project_name + "ASG*"
+    for auto_scaling_group in auto_scaling_groups:
+        if (re.match(pattern, auto_scaling_group.name)):
+            return auto_scaling_group
+        
+def wait_for_new_instances_to_spun_up():
+    """  check the status of the instance and wait for it to startup and become available for testing. """
+    pass
+
 def rolling_deploy():
-    auto_scaling_group = retrieve_auto_scaling_group_by_tagname()
+    auto_scaling_group = retrieve_auto_scaling_group()
     current_desired_ec2_count = return_autoscalinggroup_desired_size(auto_scaling_group)
     new_desired_ec2_count = calculate_new_desired_ec2_count(current_desired_ec2_count)
     update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, new_desired_ec2_count)
+    wait_for_new_instances_to_spun_up()
     if (healthcheck_new_instances()):
         print "Health Check Passed"
         update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, current_desired_ec2_count)
