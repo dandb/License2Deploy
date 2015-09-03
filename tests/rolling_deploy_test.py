@@ -5,7 +5,6 @@ import unittest
 
 import boto.ec2.autoscale as asg
 
-
 class Test(unittest.TestCase):
     
     def test_filter_auto_scaling_group(self):

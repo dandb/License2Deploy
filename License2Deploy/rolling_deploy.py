@@ -1,7 +1,8 @@
 import boto.ec2.autoscale as asg
-import re
 
 
+def init(self):
+    self.aws_connection = asg.connect_to_region('us-east-1')
 
 def return_autoscalinggroup_desired_size(auto_scaling_group):
     """ AWS Call: return the  minsize of the AutoScaling Group of the Microservice"""
@@ -25,10 +26,10 @@ def update_ami_id_with_last_successfull():
     """ AWS Call: As health check failed, update the ami_id with the last successfull one """
     pass
 
-def retrieve_auto_scaling_group(app_name, environment):
+def retrieve_auto_scaling_group(self, app_name, project_name, environment):
     """ AWS Call: retrieve the Auto Scaling Group by Tag """
-    auto_scaling_groups = asg.connect_to_region("us-east-1").get_all_groups();
-    return filter_auto_scaling_group(auto_scaling_groups, app_name, environment)
+    auto_scaling_groups = self.aws_connection.get_all_groups();
+    return filter_auto_scaling_group(auto_scaling_groups, app_name, project_name, environment)
 
 def filter_auto_scaling_group(auto_scaling_groups, app_name, project_name, environment):
     """ Filter out the correct auto scaling group """
