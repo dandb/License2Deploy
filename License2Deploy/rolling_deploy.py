@@ -1,18 +1,17 @@
-'''
-Created on Sep 2, 2015
+import boto.ec2.autoscale as asg
+from _warnings import filters
 
-@author: thatchinamoorthyp
-'''
 
-def return_autoscalinggroup_desired_size():
+def return_autoscalinggroup_desired_size(auto_scaling_group):
     """ AWS Call: return the  minsize of the AutoScaling Group of the Microservice"""
-    return 5
+    return auto_scaling_group.min_size
 
 def calculate_new_desired_ec2_count(current_desired_ec2_count):
     """ By default, we double the instance Count """
     return 2 * current_desired_ec2_count
 
-def update_desired_ec2_count_in_autoscalinggroup(desired_ec2_count):
+def update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, ec2_count):
+    auto_scaling_group.set_capacity(ec2_count)
     """ AWS Call: update the desired_size of the AutoScaling Group of the Microserice"""
     pass
 
@@ -25,18 +24,30 @@ def update_ami_id_with_last_successfull():
     """ AWS Call: As health check failed, update the ami_id with the last successfull one """
     pass
 
-
+def retrieve_auto_scaling_group_by_tagname(tag_name, tag_value):
+    """ AWS Call: retrieve the Auto Scaling Group by Tag """
+    tag_name = "cloud"
+    tag_value = "dev-cirrus-cache-microservice"
+    asg_connection = asg.connect_to_region("us-east-1")
+    all_tags = asg_connection.get_all_tags()
+    auto_scaling_group_id = ""
+    for tag in all_tags:
+        if ((tag.key == tag_name) and (tag.value == tag_value)) :
+            auto_scaling_group_id = tag.resource_id
+    auto_scalling_group = asg_connection.get_all_groups(names=[auto_scaling_group_id])
+    return auto_scalling_group
+    
 def rolling_deploy():
-    current_desired_ec2_count = return_autoscalinggroup_desired_size()
+    auto_scaling_group = retrieve_auto_scaling_group_by_tagname()
+    current_desired_ec2_count = return_autoscalinggroup_desired_size(auto_scaling_group)
     new_desired_ec2_count = calculate_new_desired_ec2_count(current_desired_ec2_count)
-    update_desired_ec2_count_in_autoscalinggroup(new_desired_ec2_count)
+    update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, new_desired_ec2_count)
     if (healthcheck_new_instances()):
         print "Health Check Passed"
-        update_desired_ec2_count_in_autoscalinggroup(current_desired_ec2_count)
-    else:    
+        update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, current_desired_ec2_count)
+    else:
         print "Health Check Failed"
-        update_ami_id_with_last_successfull()        
-        update_desired_ec2_count_in_autoscalinggroup(current_desired_ec2_count)
+        return "Error"
         
 if __name__ == '__main__':
     rolling_deploy()  
