@@ -1,5 +1,6 @@
 import unittest
 
+
 class License2DeployTests(unittest.TestCase):
 
   def setUp(self):
@@ -13,4 +14,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
