@@ -22,17 +22,12 @@ class Test(unittest.TestCase):
         auto_scaling_groups.append(AutoScalingGroup(name="dnbi-backend-stg-dnbigmsextenderASGstg-62N1XQ4MRHSH"))
         mock_autoscale_connection.get_all_groups.return_value = auto_scaling_groups 
         
-        print  mock_autoscale_connection.get_all_groups
+        rolling_deploy = RollingDeploy()
+        rolling_deploy.aws_connection = mock_autoscale_connection
         
-        mock_rolling_deploy = MagicMock(spec=RollingDeploy)
-        mock_rolling_deploy.aws_connection = mock_autoscale_connection
-        
-        desired_auto_scaling_group = mock_rolling_deploy.retrieve_auto_scaling_group(app_name="dnbi", project_name="email", environment="stg")
-        #print "Group=", desired_auto_scaling_group
-        print vars(desired_auto_scaling_group)
-        self.assertEqual("dnbi-backend-stg-dnbiemailASGstg-1T3DV362TS505", desired_auto_scaling_group)
+        desired_auto_scaling_group = rolling_deploy.retrieve_auto_scaling_group(app_name="dnbi", project_name="cache", environment="stg")
+        self.assertEqual("dnbi-backend-stg-dnbicacheASGstg-1O3HO09P2AHYJ", desired_auto_scaling_group.name)
     
-
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testDesiredEC2Count']
     unittest.main()
