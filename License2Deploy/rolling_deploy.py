@@ -25,7 +25,7 @@ class RollingDeploy:
     def retrieve_auto_scaling_group(self, app_name, project_name, environment):
         """ AWS Call: retrieve the Auto Scaling Group by Tag """
         auto_scaling_groups = self.aws_connection.get_all_groups();
-        return self.filter_auto_scaling_group(self, auto_scaling_groups, app_name, project_name, environment)
+        return self.filter_auto_scaling_group(auto_scaling_groups, app_name, project_name, environment)
     
     def filter_auto_scaling_group(self, auto_scaling_groups, app_name, project_name, environment):
         """ Filter out the correct auto scaling group """
@@ -39,14 +39,14 @@ class RollingDeploy:
         pass
     
     def rolling_deploy(self):
-        auto_scaling_group = self.retrieve_auto_scaling_group(self)
-        current_desired_ec2_count = self.return_autoscalinggroup_desired_size(self, auto_scaling_group)
-        new_desired_ec2_count = self.calculate_new_desired_ec2_count(self, current_desired_ec2_count)
-        self.update_desired_ec2_count_in_autoscalinggroup(self, auto_scaling_group, new_desired_ec2_count)
-        self.wait_for_new_instances_to_spun_up(self)
-        if (self.healthcheck_new_instances(self)):
+        auto_scaling_group = self.retrieve_auto_scaling_group()
+        current_desired_ec2_count = self.return_autoscalinggroup_desired_size(auto_scaling_group)
+        new_desired_ec2_count = self.calculate_new_desired_ec2_count(current_desired_ec2_count)
+        self.update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, new_desired_ec2_count)
+        self.wait_for_new_instances_to_spun_up()
+        if (self.healthcheck_new_instances()):
             print "Health Check Passed"
-            self.update_desired_ec2_count_in_autoscalinggroup(self, auto_scaling_group, current_desired_ec2_count)
+            self.update_desired_ec2_count_in_autoscalinggroup(auto_scaling_group, current_desired_ec2_count)
         else:
             print "Health Check Failed"
             return "Error"
