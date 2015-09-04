@@ -5,9 +5,13 @@ python:
 
 install:
   - python setup.py install
+  - pip install coveralls
 
 before_script:
   - export PYTHONPATH=$PYTHONPATH:$PWD
 
 script:
-  - python setup.py test
+  - coverage run --source License2Deploy setup.py test
+
+after_success:
+    coveralls

@@ -19,3 +19,4 @@ python License2Deploy
 
 
 [![Build Status](https://travis-ci.org/dandb/License2Deploy.svg)](https://travis-ci.org/dandb/License2Deploy)
+[![Coverage Status](https://coveralls.io/repos/dandb/License2Deploy/badge.svg?branch=master&service=github)](https://coveralls.io/github/dandb/License2Deploy?branch=master)

@@ -1,0 +1,4 @@
+'qa': 'us-west-1'
+'stg': 'us-east-1'
+'prd': 'us-east-1'
+'default': 'us-west-1'
