@@ -1,12 +1,20 @@
+#!/usr/bin/python
+
 import os
 import sys
 from CustomInstall import CustomInstall
 from setuptools import setup, Command
 
 install_requires = [
+    "boto",
+    "PyYaml"
   ]
 
 tests_require = [
+    "mock",
+    "boto",
+    "moto",
+    "PyYaml"
   ]
 
 def read(fname):
@@ -22,10 +30,10 @@ setup(
     keywords = "AWS EC2 AutoScale Group AMI desired capacity",
     url = "https://github.com/dandb/License2Deploy",
     packages=['License2Deploy'],
+    include_package_data=True,
     install_requires = install_requires,
     tests_require = tests_require,
     extras_require={'test': tests_require},
     long_description=read('README.md') + '\n\n' + read('CHANGES'),
-    test_suite = 'tests',
-    cmdclass={'install': CustomInstall},
+    test_suite = 'tests'
 )
