@@ -7,7 +7,8 @@ from setuptools import setup, Command
 
 install_requires = [
     "boto",
-    "PyYaml"
+    "PyYaml",
+    "argparse"
   ]
 
 tests_require = [
