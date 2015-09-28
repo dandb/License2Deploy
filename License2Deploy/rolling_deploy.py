@@ -1,13 +1,14 @@
 #!/usr/bin/python
 
 import logging
+import argparse
 from sys import exit, argv
 from time import sleep, time
 from AWSConn import AWSConn
 
 class RollingDeploy(object):
 
-  def __init__(self, env=None, project=None, buildNum=None, ami_id=None, profile_name='default', regions_conf='/opt/License2Deploy/regions.yml'):
+  def __init__(self, env=None, project=None, buildNum=None, ami_id=None, profile_name=None, regions_conf=None):
     self.env = env
     self.project = project.replace('-','')
     self.buildNum = buildNum
@@ -198,10 +199,15 @@ class RollingDeploy(object):
     self.confirm_lb_has_only_new_instances()
     logging.info("Deployment Complete!")
 
-def check_args(): # pragma: no cover
-  if (len(argv) < 5):
-    logging.error("Please enter five arguments: {0} {1} {2} {3} {4} {5}".format(argv[0], 'env', 'project', 'buildnumber', 'ami-id', 'profile'))
-    exit(2) #Exiting with error code
+def get_args(): # pragma: no cover
+  parser = argparse.ArgumentParser()
+  parser.add_argument('-e', '--environment', action='store', dest='env', help='Environment e.g. qa, stg, prd', type=str, required=True)
+  parser.add_argument('-p', '--project', action='store', dest='project', help='Project name', type=str, required=True)
+  parser.add_argument('-b', '--build', action='store', dest='buildNum', help='Build Number', type=str, required=True)
+  parser.add_argument('-a', '--ami', action='store', dest='amiID', help='AMI ID to be deployed', type=str, required=True)
+  parser.add_argument('-P', '--profile', default='default', action='store', dest='profile', help='Profile name as designated in aws credentials/config files', type=str)
+  parser.add_argument('-c', '--config', default='/opt/License2Deploy/config.yml', action='store', dest='config', help='Config file Location, eg. /opt/License2Deploy/config.yml', type=str)
+  return parser.parse_args()
 
 def setup_logging(): # pragma: no cover
   logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s',level=logging.INFO)
@@ -209,9 +215,9 @@ def setup_logging(): # pragma: no cover
 
 def main(): # pragma: no cover
   setup_logging()
-  check_args()
-  l = RollingDeploy(argv[1], argv[2], argv[3], argv[4], argv[5])
-  l.deploy()
+  args = get_args()
+  deployObj = RollingDeploy(args.env, args.project, args.buildNum, args.amiID, args.profile, args.config)
+  deployObj.deploy()
   
 if __name__ == "__main__": # pragma: no cover
     main()
