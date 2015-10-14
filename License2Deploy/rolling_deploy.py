@@ -166,7 +166,7 @@ class RollingDeploy(object):
       logging.info("ELB healthcheck OK == {0}: {1}".format(instance_id.instance_id, instance_id.state))
     return True
 
-  def confirm_lb_has_only_new_instances(self, wait_time=30):
+  def confirm_lb_has_only_new_instances(self, wait_time=60):
     ''' Confirm that only new instances with the current build tag are in the load balancer '''
     sleep(wait_time) # Allotting time for the instances to shut down
     lb = self.get_lb()
@@ -178,6 +178,23 @@ class RollingDeploy(object):
         exit(self.exit_error_code)
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, lb))
     return instance_ids
+
+  def tag_ami(self, ami_id, env): # pragma: no cover
+    ''' Tagging AMI with DEPLOYED tag '''
+    try:
+      current_tag = self.conn_ec2.get_all_images(image_ids=ami_id)[0].tags.get('deployed')
+      if not current_tag: 
+        logging.info("No DEPLOY tags exist, tagging with {0}".format(env))
+        self.conn_ec2.create_tags([self.ami_id], {"deployed": env})
+      elif env not in current_tag:
+        new_tag = ', '.join([current_tag, env])
+        logging.info("DEPLOY tags currently exist: {0}, new tag is {1}".format(current_tag, new_tag))
+        self.conn_ec2.create_tags([self.ami_id], {"deployed": new_tag})
+      else:
+        logging.info("No tagging necessary")
+    except Exception as e:
+      logging.error("Unable to tag ID, please investigate: {0}".format(e))
+      exit(self.exit_error_code)
 
   def healthcheck_new_instances(self, group_name): # pragma: no cover
     ''' Healthchecking new instances to ensure deployment was successful '''
@@ -197,6 +214,7 @@ class RollingDeploy(object):
     self.healthcheck_new_instances(group_name)
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
     self.confirm_lb_has_only_new_instances()
+    self.tag_ami(self.ami_id, self.env)
     logging.info("Deployment Complete!")
 
 def get_args(): # pragma: no cover

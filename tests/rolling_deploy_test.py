@@ -63,7 +63,6 @@ class RollingDeployTest(unittest.TestCase):
     instance_id_list = []
     reservation = conn.run_instances('ami-1234abcd', min_count=2)
     instance_ids = reservation.instances
-    count = 0
     for instance in instance_ids:
       instance.add_tag('BUILD', 0)
       instance_id_list.append(instance.id)
