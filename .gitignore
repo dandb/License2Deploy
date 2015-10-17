@@ -1,5 +1,8 @@
 *.pyc
 *.egg-info
+*.eggs
 *.swp
+*.coverage
+*htmlcov
 .DS_Store
 .localized

@@ -179,7 +179,7 @@ class RollingDeploy(object):
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, lb))
     return instance_ids
 
-  def tag_ami(self, ami_id, env): # pragma: no cover
+  def tag_ami(self, ami_id, env):
     ''' Tagging AMI with DEPLOYED tag '''
     try:
       current_tag = self.conn_ec2.get_all_images(image_ids=ami_id)[0].tags.get('deployed')
@@ -191,7 +191,7 @@ class RollingDeploy(object):
         logging.info("DEPLOY tags currently exist: {0}, new tag is {1}".format(current_tag, new_tag))
         self.conn_ec2.create_tags([self.ami_id], {"deployed": new_tag})
       else:
-        logging.info("No tagging necessary")
+        logging.info("No tagging necessary, already tagged with env: {0}".format(env))
     except Exception as e:
       logging.error("Unable to tag ID, please investigate: {0}".format(e))
       exit(self.exit_error_code)
