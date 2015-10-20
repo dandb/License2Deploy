@@ -74,6 +74,20 @@ class RollingDeployTest(unittest.TestCase):
     return [conn, instance_id_list]
 
   @mock_ec2
+  def test_tag_ami(self):
+    conn = self.setUpEC2()[0]
+    reservation = conn.run_instances('ami-1234xyz1', min_count=1)
+    instance_ids = reservation.instances
+    conn.create_image(instance_ids[0].id, "test-ami", "this is a test ami")
+    _ami_ids = conn.get_all_images()
+    _ami_id = _ami_ids[0].id
+    self.rolling_deploy = RollingDeploy('stg', 'server-gms-extender', '0', _ami_id, None, './regions.yml')
+    self.rolling_deploy.tag_ami(str(_ami_id), 'stg')
+    self.rolling_deploy.tag_ami(str(_ami_id), 'qa')
+    self.rolling_deploy.tag_ami(str(_ami_id), 'qa')
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.tag_ami('blargness', 'qa'))
+
+  @mock_ec2
   def test_load_config(self):
     self.assertEqual(AWSConn.load_config('regions.yml').get('qa'), 'us-west-1')
     self.assertEqual(AWSConn.load_config('regions.yml').get('stg'), 'us-east-1')
@@ -86,7 +100,7 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(AWSConn.determine_region('get-shwifty'), 'us-west-1')
 
   @mock_ec2
-  def test_wait_ami_availability(self): #NEED TO FINISH
+  def test_wait_ami_availability(self):
     conn = self.setUpEC2()[0]
     inst_ids = self.setUpEC2()[1]
     conn.create_image(inst_ids[0], "test-ami", "this is a test ami")
@@ -95,6 +109,7 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(str(ami_id), str(self.rolling_deploy.get_ami_id_state(ami_id.id)))
     self.assertTrue(self.rolling_deploy.wait_ami_availability(ami_id.id))
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.wait_ami_availability('bad-id')) #Will raise exception because ami can't be found
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.wait_ami_availability(ami_id.id, -1)) #Will raise exception due to timeout occuring
 
   @mock_ec2
   @mock_elb
