@@ -224,7 +224,7 @@ def get_args(): # pragma: no cover
   parser.add_argument('-b', '--build', action='store', dest='buildNum', help='Build Number', type=str, required=True)
   parser.add_argument('-a', '--ami', action='store', dest='amiID', help='AMI ID to be deployed', type=str, required=True)
   parser.add_argument('-P', '--profile', default='default', action='store', dest='profile', help='Profile name as designated in aws credentials/config files', type=str)
-  parser.add_argument('-c', '--config', default='/opt/License2Deploy/config.yml', action='store', dest='config', help='Config file Location, eg. /opt/License2Deploy/config.yml', type=str)
+  parser.add_argument('-c', '--config', default='/opt/License2Deploy/regions.yml', action='store', dest='config', help='Config file Location, eg. /opt/License2Deploy/regions.yml', type=str)
   return parser.parse_args()
 
 def setup_logging(): # pragma: no cover
