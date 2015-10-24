@@ -129,7 +129,7 @@ class RollingDeploy(object):
       logging.error("New Instance List is empty, something went wrong")
       exit(self.exit_error_code)
     
-  def wait_for_new_instances(self, instance_ids, retry=9, wait_time=30):
+  def wait_for_new_instances(self, instance_ids, retry=10, wait_time=30):
     ''' Monitor new instances that come up and wait until they are ready '''
     for instance in instance_ids:
       count = 0
@@ -148,7 +148,7 @@ class RollingDeploy(object):
           else:
             logging.info("{0} is in a healthy state. Moving on...".format(instance))
 
-  def lb_healthcheck(self, new_ids, retry=10, wait_time=10):
+  def lb_healthcheck(self, new_ids, retry=10, wait_time=30):
     ''' Confirm that the healthchecks report back OK in the LB. '''
     lb = self.get_lb()
     inst_length = len(new_ids)
