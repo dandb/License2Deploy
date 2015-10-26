@@ -109,7 +109,7 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(str(ami_id), str(self.rolling_deploy.get_ami_id_state(ami_id.id)))
     self.assertTrue(self.rolling_deploy.wait_ami_availability(ami_id.id))
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.wait_ami_availability('bad-id')) #Will raise exception because ami can't be found
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.wait_ami_availability(ami_id.id, -1)) #Will raise exception due to timeout occuring
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.wait_ami_availability(ami_id.id, -100)) #Will raise exception as time limit is over
 
   @mock_ec2
   @mock_elb
