@@ -30,12 +30,12 @@ class RollingDeploy(object):
       exit(self.exit_error_code)
     return ami_obj[0]
 
-  def wait_ami_availability(self, ami_id, timeout=5):
+  def wait_ami_availability(self, ami_id, timer=20):
     ''' Timeout should be in minutes '''
-    timeout = time() + 60*timeout
+    timeout = time() + 60 * timer
     while True:
-      ami = self.get_ami_id_state(ami_id).state
-      if time() < timeout and ami == 'available':
+      ami_state = self.get_ami_id_state(ami_id).state
+      if time() <= timeout and ami_state == 'available':
         logging.info("AMI {0} is ready".format(ami_id))
         return True
       elif time() > timeout:
@@ -43,8 +43,8 @@ class RollingDeploy(object):
         exit(self.exit_error_code)
       else:
         logging.warning("AMI {0} is not ready yet, retrying in 30 seconds".format(ami_id))
-        sleep(timeout)
-      
+        sleep(30)
+
   def get_group_info(self, group_name=None):
     try:
       if group_name:
