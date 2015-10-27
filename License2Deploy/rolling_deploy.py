@@ -5,6 +5,7 @@ import argparse
 from sys import exit, argv
 from time import sleep, time
 from AWSConn import AWSConn
+from set_logging import SetLogging
 
 class RollingDeploy(object):
 
@@ -101,15 +102,25 @@ class RollingDeploy(object):
     except Exception as e:
       logging.error("Unable to update desired count, please investigate error: {0}".format(e))
       exit(self.exit_error_code)
-      
+
+  def get_instance_ip_addrs(self, id_list=[]):
+    ip_dict = {}
+    try:
+      instance_data = [ids for instInfo in self.conn_ec2.get_all_instances(instance_ids=id_list) for ids in instInfo.instances]
+      for instance in instance_data:
+        ip_dict[instance.id] = instance.private_ip_address
+      return ip_dict
+    except Exception as e:
+      logging.error("Unable to get IP Addresses for instances: {0}".format(e))
+      exit(self.exit_error_code)
+
   def get_all_instance_ids(self, group_name):
     ''' Gather Instance id's of all instances in the autoscale group '''
-    instances = [ i for i in self.get_group_info(group_name)[0].instances ]
-    id_list = []
-    for instance_id in instances:
-      id_list.append(instance_id.instance_id)
+    instances = [i for i in self.get_group_info(group_name)[0].instances]
+    id_list = [instance_id.instance_id for instance_id in instances]
+    id_ip_dict = self.get_instance_ip_addrs(id_list)
 
-    logging.info("List of all Instance ID's in {0}: {1}".format(group_name, id_list))
+    logging.info("List of all Instance ID's and IP addresses in {0}: {1}".format(group_name, id_ip_dict))
     return id_list
 
   def get_instance_ids_by_requested_build_tag(self, id_list, build):
@@ -118,12 +129,11 @@ class RollingDeploy(object):
     new_instances = []
     for instance_id in id_list:
       rslt = [inst for r in reservations for inst in r.instances if 'BUILD' in inst.tags and inst.id == instance_id]
-      for new_id in rslt:
-        if new_id.tags['BUILD'] == str(build):
-          new_instances.append(instance_id)
-    
+      new_instances.append([instance_id for new_id in rslt if new_id.tags['BUILD'] == str(build)][0])
+    id_ip_dict = self.get_instance_ip_addrs(new_instances)
+
     if new_instances:
-      logging.info("New Instance List: {0}".format(new_instances))
+      logging.info("New Instance List with IP Addresses: {0}".format(id_ip_dict))
       return new_instances
     else:
       logging.error("New Instance List is empty, something went wrong")
@@ -217,6 +227,7 @@ class RollingDeploy(object):
     self.tag_ami(self.ami_id, self.env)
     logging.info("Deployment Complete!")
 
+
 def get_args(): # pragma: no cover
   parser = argparse.ArgumentParser()
   parser.add_argument('-e', '--environment', action='store', dest='env', help='Environment e.g. qa, stg, prd', type=str, required=True)
@@ -227,13 +238,9 @@ def get_args(): # pragma: no cover
   parser.add_argument('-c', '--config', default='/opt/License2Deploy/regions.yml', action='store', dest='config', help='Config file Location, eg. /opt/License2Deploy/regions.yml', type=str)
   return parser.parse_args()
 
-def setup_logging(): # pragma: no cover
-  logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s',level=logging.INFO)
-  logging.info("Begin Logging...")
-
 def main(): # pragma: no cover
-  setup_logging()
   args = get_args()
+  SetLogging.setup_logging()
   deployObj = RollingDeploy(args.env, args.project, args.buildNum, args.amiID, args.profile, args.config)
   deployObj.deploy()
   
