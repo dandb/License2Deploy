@@ -61,7 +61,7 @@ class RollingDeployTest(unittest.TestCase):
     conn_elb = boto.connect_elb()
     conn = boto.connect_ec2()
     instance_id_list = []
-    reservation = conn.run_instances('ami-1234abcd', min_count=2)
+    reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
     instance_ids = reservation.instances
     for instance in instance_ids:
       instance.add_tag('BUILD', 0)
@@ -168,11 +168,23 @@ class RollingDeployTest(unittest.TestCase):
     self.setUpAutoScaleGroup()
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.calculate_autoscale_desired_instance_count('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING', 'nothing'))
 
+  @mock_ec2
+  def test_get_instance_ip_addrs(self):
+    self.setUpEC2()
+    self.rolling_deploy.get_instance_ip_addrs(self.setUpEC2()[1])
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ip_addrs(['blah', 'blarg']))
+
+  @mock_ec2
   @mock_autoscaling
+  @mock_elb
   def test_get_all_instance_ids(self):
     self.setUpAutoScaleGroup()
-    get_ids = len(self.rolling_deploy.get_all_instance_ids('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING'))
-    self.assertEqual(get_ids, 2)
+    conn = boto.connect_ec2()
+    instance_id_list = []
+    reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
+    instance_ids = reservation.instances
+    rslt = self.rolling_deploy.get_all_instance_ids('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING')
+    self.assertEqual(len(instance_ids), len(rslt)) 
 
   @mock_ec2
   def test_get_instance_ids_by_requested_build_tag(self):
