@@ -125,20 +125,20 @@ class RollingDeploy(object):
 
   def get_instance_ids_by_requested_build_tag(self, id_list, build):
     ''' Gather Instance id's of all instances in the autoscale group '''
-    reservations = self.conn_ec2.get_all_reservations()
+    reservations = self.conn_ec2.get_all_reservations(instance_ids=id_list)
     new_instances = []
     for instance_id in id_list:
-      rslt = [inst for r in reservations for inst in r.instances if 'BUILD' in inst.tags and inst.id == instance_id]
-      new_instances.append([instance_id for new_id in rslt if new_id.tags['BUILD'] == str(build)][0])
-    id_ip_dict = self.get_instance_ip_addrs(new_instances)
+      instances_build_tags = [inst for r in reservations for inst in r.instances if 'BUILD' in inst.tags and inst.id == instance_id]
+      new_instances += [instance_id for new_id in instances_build_tags if new_id.tags['BUILD'] == str(build)]
 
-    if new_instances:
-      logging.info("New Instance List with IP Addresses: {0}".format(id_ip_dict))
-      return new_instances
-    else:
-      logging.error("New Instance List is empty, something went wrong")
+    if not new_instances:
+      logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.\nInstance ID List: {1}".format(build, id_list))
       exit(self.exit_error_code)
-    
+
+    id_ip_dict = self.get_instance_ip_addrs(new_instances)
+    logging.info("New Instance List with IP Addresses: {0}".format(id_ip_dict))
+    return new_instances
+
   def wait_for_new_instances(self, instance_ids, retry=10, wait_time=30):
     ''' Monitor new instances that come up and wait until they are ready '''
     for instance in instance_ids:
