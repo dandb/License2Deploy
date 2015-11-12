@@ -81,8 +81,8 @@ class RollingDeploy(object):
         new_count = self.decrease_autoscale_instance_count(cur_count)
       logging.info("Current desired count was changed from {0} to {1}".format(cur_count, new_count))
       return new_count
-    except UnboundLocalError as u:
-      logging.error("Please make sure the desired_state is set to either increase or decrease: {0}".format(u))
+    except Exception as e:
+      logging.error("Please make sure the desired_state is set to either increase or decrease: {0}".format(e))
       exit(self.exit_error_code)
  
   def double_autoscale_instance_count(self, count):
@@ -154,7 +154,7 @@ class RollingDeploy(object):
             count += 1
             if count > retry:
               logging.error("{0} has not reached a valid healthy state".format(instance))
-              exit(self.exit_error_code)
+              self.revert_deployment()
           else:
             logging.info("{0} is in a healthy state. Moving on...".format(instance))
 
@@ -171,7 +171,7 @@ class RollingDeploy(object):
         count = (count + 1)
         if instance_id.state != 'InService' and (count >= retry):
           logging.error("Load balancer healthcheck returning {0} for {1} and has exceeded the timeout threshold set. Please roll back.".format(instance_id.state, instance_id.instance_id)) 
-          exit(self.exit_error_code)
+          self.revert_deployment()
         sleep(wait_time)
       logging.info("ELB healthcheck OK == {0}: {1}".format(instance_id.instance_id, instance_id.state))
     return True
@@ -185,7 +185,7 @@ class RollingDeploy(object):
       build = self.conn_ec2.get_all_reservations(instance.instance_id)[0].instances[0].tags['BUILD']
       if build != self.buildNum:
         logging.error("There is still an old instance in the ELB: {0}. Please investigate".format(instance))
-        exit(self.exit_error_code)
+        self.revert_deployment()
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, lb))
     return instance_ids
 
@@ -206,10 +206,14 @@ class RollingDeploy(object):
       logging.error("Unable to tag ID, please investigate: {0}".format(e))
       exit(self.exit_error_code)
 
+  def gather_instance_info(self, group): #pragma: no cover
+    instance_ids = self.get_all_instance_ids(group)
+    new_instance_ids = self.get_instance_ids_by_requested_build_tag(instance_ids, self.buildNum)
+    return new_instance_ids
+
   def healthcheck_new_instances(self, group_name): # pragma: no cover
     ''' Healthchecking new instances to ensure deployment was successful '''
-    instance_ids = self.get_all_instance_ids(group_name)
-    new_instance_ids = self.get_instance_ids_by_requested_build_tag(instance_ids, self.buildNum)
+    new_instance_ids = self.gather_instance_info(group_name)
     self.wait_for_new_instances(new_instance_ids) #Wait for new instances to be up and ready
     self.lb_healthcheck(new_instance_ids) #Once instances are ready, healthcheck. If successful, decrease desired count.
 
@@ -227,6 +231,17 @@ class RollingDeploy(object):
     self.tag_ami(self.ami_id, self.env)
     logging.info("Deployment Complete!")
 
+  def revert_deployment(self): #pragma: no cover
+    ''' Will revert back to original instances in autoscale group '''
+    logging.error("REVERTING: Removing new instances from autoscale group")
+    group_name = self.get_autoscale_group_name()
+    new_instance_ids = self.gather_instance_info(group_name)
+    for instance_id in new_instance_ids:
+      self.conn_auto.terminate_instance(instance_id, decrement_capacity=True)
+      logging.info("Removed {0} from autoscale group".format(instance_id))
+    logging.error("REVERT COMPLETE!")
+    exit(self.exit_error_code)
+    
 
 def get_args(): # pragma: no cover
   parser = argparse.ArgumentParser()
