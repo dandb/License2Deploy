@@ -185,7 +185,7 @@ class RollingDeploy(object):
       build = self.conn_ec2.get_all_reservations(instance.instance_id)[0].instances[0].tags['BUILD']
       if build != self.buildNum:
         logging.error("There is still an old instance in the ELB: {0}. Please investigate".format(instance))
-        self.revert_deployment()
+        exit(self.exit_error_code)
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, lb))
     return instance_ids
 
