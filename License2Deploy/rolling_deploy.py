@@ -133,7 +133,7 @@ class RollingDeploy(object):
 
     if not new_instances:
       logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.\nInstance ID List: {1}".format(build, id_list))
-      exit(self.exit_error_code)
+      self.revert_deployment()
 
     id_ip_dict = self.get_instance_ip_addrs(new_instances)
     logging.info("New Instance List with IP Addresses: {0}".format(id_ip_dict))
