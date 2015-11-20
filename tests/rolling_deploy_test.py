@@ -187,8 +187,10 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(len(instance_ids), len(rslt)) 
 
   @mock_ec2
+  @mock_autoscaling
   def test_get_instance_ids_by_requested_build_tag(self):
     self.setUpEC2()
+    self.setUpAutoScaleGroup()
     conn = boto.connect_ec2()
     new_inst = []
     res_ids = conn.get_all_instances()
@@ -197,6 +199,7 @@ class RollingDeployTest(unittest.TestCase):
          if [y for y in name.tags if y == 'BUILD' and name.tags['BUILD'] == '0']:
            new_inst.append(name.id)
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
   @mock_ec2
   def test_get_instance_ids_by_requested_build_tag_failure(self):

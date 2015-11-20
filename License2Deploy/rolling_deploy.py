@@ -133,6 +133,8 @@ class RollingDeploy(object):
 
     if not new_instances:
       logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.\nInstance ID List: {1}".format(build, id_list))
+      group_name = self.get_autoscale_group_name()
+      self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
       exit(self.exit_error_code)
 
     id_ip_dict = self.get_instance_ip_addrs(new_instances)
