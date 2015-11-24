@@ -61,7 +61,7 @@ class RollingDeploy(object):
 
   def get_autoscale_group_name(self):
     ''' Search for project in autoscale groups and return autoscale group name '''
-    proj_name = next((instance.name for instance in filter(lambda n: n.name, self.get_group_info()) if self.project in instance.name), None)
+    proj_name = next((instance.name for instance in filter(lambda n: n.name, self.get_group_info()) if self.project in instance.name and self.env in instance.name), None)
     return proj_name
 
   def get_lb(self):
