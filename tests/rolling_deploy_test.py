@@ -13,37 +13,50 @@ from License2Deploy.AWSConn import AWSConn
 
 class RollingDeployTest(unittest.TestCase):
 
+  autoscaling_group_name = 'autoscaling_group_name'
+  launch_configuration_name = 'launch_configuration_name'
+
+  GMS_LAUNCH_CONFIGURATION_STG = 'server-backend-stg-servergmsextenderLCstg-46TIE5ZFQTLB'
+  GMS_LAUNCH_CONFIGURATION_PRD = 'server-backend-prd-servergmsextenderLCprd-46TIE5ZFQTLB'
+  GMS_AUTOSCALING_GROUP_STG = 'server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING'
+  GMS_AUTOSCALING_GROUP_PRD = 'server-backend-prd-servergmsextenderASGprd-3ELOD1FOTESTING'
   @mock_autoscaling
   @mock_elb
   @mock_ec2
   def setUp(self):
     self.rolling_deploy = RollingDeploy('stg', 'server-gms-extender', '0', 'ami-abcd1234', None, './regions.yml')
 
-  @mock_autoscaling
-  def setUpAutoScaleGroup(self):
-    conn = boto.connect_autoscale()
-    config = LaunchConfiguration(
-      name='server-backend-stg-servergmsextenderLCstg-46TIE5ZFQTLB',
-      image_id='ami-abcd1234',
-      instance_type='m1.medium',
-    )
-    group = AutoScalingGroup(
-      name='server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING',
-      availability_zones=['us-east-1a'],
-      default_cooldown=300,
-      desired_capacity=2,
-      health_check_period=0,
-      health_check_type="EC2",
-      max_size=10,
-      min_size=2,
-      launch_config=config,
-      load_balancers=['servergmsextenderELBstg'],
-      vpc_zone_identifier='subnet-1234abcd',
-      termination_policies=["Default"],
-    )
+  def get_autoscaling_configurations(self, launch_configuration_name, autoscaling_group_name):
+    return {
+      self.autoscaling_group_name: autoscaling_group_name,
+      self.launch_configuration_name: launch_configuration_name
+    }
 
-    conn.create_launch_configuration(config)
-    conn.create_auto_scaling_group(group)
+  @mock_autoscaling
+  def setUpAutoScaleGroup(self, configurations):
+    conn = boto.connect_autoscale()
+    for configuration in configurations:
+      config = LaunchConfiguration(
+        name=configuration[self.launch_configuration_name],
+        image_id='ami-abcd1234',
+        instance_type='m1.medium',
+      )
+      group = AutoScalingGroup(
+        name=configuration[self.autoscaling_group_name],
+        availability_zones=['us-east-1a'],
+        default_cooldown=300,
+        desired_capacity=2,
+        health_check_period='0',
+        health_check_type="EC2",
+        max_size=10,
+        min_size=2,
+        launch_config=config,
+        load_balancers=['servergmsextenderELBstg'],
+        vpc_zone_identifier='subnet-1234abcd',
+        termination_policies=["Default"],
+      )
+      conn.create_launch_configuration(config)
+      conn.create_auto_scaling_group(group)
 
   @mock_elb
   def setUpELB(self):
@@ -140,33 +153,48 @@ class RollingDeployTest(unittest.TestCase):
 
   @mock_autoscaling
   def test_get_group_info(self):
-    self.setUpAutoScaleGroup()
-    group = self.rolling_deploy.get_group_info(['server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING'])[0]
-    self.assertEqual(group.name, 'server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING')
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    group = self.rolling_deploy.get_group_info([self.GMS_AUTOSCALING_GROUP_STG])[0]
+    self.assertEqual(group.name, self.GMS_AUTOSCALING_GROUP_STG)
 
   @mock_autoscaling
   def test_failure_get_group_info(self):
-    self.setUpAutoScaleGroup()
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_group_info('cool'))
 
   @mock_autoscaling
-  def test_get_autoscale_group_name(self):
-    self.setUpAutoScaleGroup()
+  def test_get_autoscale_group_name_stg(self):
+    autoscaling_configurations = list()
+    autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG))
+    autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_PRD, self.GMS_AUTOSCALING_GROUP_PRD))
+    self.setUpAutoScaleGroup(autoscaling_configurations)
     group = self.rolling_deploy.get_autoscale_group_name()
-    self.assertEqual(group, 'server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING')
+    self.assertEqual(group, self.GMS_AUTOSCALING_GROUP_STG)
+    self.assertNotEqual(group, self.GMS_AUTOSCALING_GROUP_PRD)
+
+  @mock_autoscaling
+  def test_get_autoscale_group_name_prd(self):
+    self.rolling_deploy = RollingDeploy('prd', 'server-gms-extender', '0', 'ami-test212', None, './regions.yml')
+    autoscaling_configurations = list()
+    autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG))
+    autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_PRD, self.GMS_AUTOSCALING_GROUP_PRD))
+    self.setUpAutoScaleGroup(autoscaling_configurations)
+    group = self.rolling_deploy.get_autoscale_group_name()
+    self.assertEqual(group, self.GMS_AUTOSCALING_GROUP_PRD)
+    self.assertNotEqual(group, self.GMS_AUTOSCALING_GROUP_STG)
 
   @mock_autoscaling
   def test_calculate_autoscale_desired_instance_count(self):
-    self.setUpAutoScaleGroup()
-    increase = self.rolling_deploy.calculate_autoscale_desired_instance_count('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING', 'increase')
-    decrease = self.rolling_deploy.calculate_autoscale_desired_instance_count('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING', 'decrease')
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    increase = self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'increase')
+    decrease = self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'decrease')
     self.assertEqual(increase, 4)
     self.assertEqual(decrease, 1)
 
   @mock_autoscaling
   def test_calculate_autoscale_desired_instance_count_failure(self):
-    self.setUpAutoScaleGroup()
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.calculate_autoscale_desired_instance_count('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING', 'nothing'))
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'nothing'))
 
   @mock_ec2
   def test_get_instance_ip_addrs(self):
@@ -178,19 +206,19 @@ class RollingDeployTest(unittest.TestCase):
   @mock_autoscaling
   @mock_elb
   def test_get_all_instance_ids(self):
-    self.setUpAutoScaleGroup()
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
     conn = boto.connect_ec2()
     instance_id_list = []
     reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
     instance_ids = reservation.instances
-    rslt = self.rolling_deploy.get_all_instance_ids('server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING')
+    rslt = self.rolling_deploy.get_all_instance_ids(self.GMS_AUTOSCALING_GROUP_STG)
     self.assertEqual(len(instance_ids), len(rslt)) 
 
   @mock_ec2
   @mock_autoscaling
   def test_get_instance_ids_by_requested_build_tag(self):
     self.setUpEC2()
-    self.setUpAutoScaleGroup()
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
     conn = boto.connect_ec2()
     new_inst = []
     res_ids = conn.get_all_instances()
@@ -208,8 +236,8 @@ class RollingDeployTest(unittest.TestCase):
 
   @mock_autoscaling
   def test_set_autoscale_instance_desired_count(self):
-    self.setUpAutoScaleGroup()
-    self.assertTrue(self.rolling_deploy.set_autoscale_instance_desired_count(4, 'server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING'))
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    self.assertTrue(self.rolling_deploy.set_autoscale_instance_desired_count(4, self.GMS_AUTOSCALING_GROUP_STG))
 
   @mock_ec2
   def test_wait_for_new_instances(self):
@@ -225,7 +253,7 @@ class RollingDeployTest(unittest.TestCase):
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.wait_for_new_instances(instance_ids, 3, 1))
 
   def test_set_autoscale_instance_desired_count_failure(self):
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.set_autoscale_instance_desired_count(4, 'server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING'))
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.set_autoscale_instance_desired_count(4, self.GMS_AUTOSCALING_GROUP_STG))
 
   def test_double_autoscale_instance_count(self):
     self.assertEqual(self.rolling_deploy.double_autoscale_instance_count(2), 4)
