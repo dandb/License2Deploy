@@ -9,6 +9,8 @@ from set_logging import SetLogging
 
 class RollingDeploy(object):
 
+  MAX_RETRIES = 10
+
   def __init__(self, env=None, project=None, buildNum=None, ami_id=None, profile_name=None, regions_conf=None):
     self.env = env
     self.project = project.replace('-','')
@@ -22,6 +24,7 @@ class RollingDeploy(object):
     self.conn_elb = AWSConn.aws_conn_elb(self.region, self.profile_name)
     self.conn_auto = AWSConn.aws_conn_auto(self.region, self.profile_name)
     self.exit_error_code = 2
+    self.load_balancer = self.get_lb()
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -66,7 +69,7 @@ class RollingDeploy(object):
 
   def get_lb(self):
     try:
-      return next(n.name for n in self.conn_elb.get_all_load_balancers() if self.project in str(n.name))
+      return next(n.name for n in self.conn_elb.get_all_load_balancers() if self.project in str(n.name) and self.env in str(n.name))
     except Exception as e:
       logging.error("Unable to pull down ELB info: {0}".format(e))
       exit(self.exit_error_code)
@@ -160,35 +163,35 @@ class RollingDeploy(object):
           else:
             logging.info("{0} is in a healthy state. Moving on...".format(instance))
 
-  def lb_healthcheck(self, new_ids, retry=10, wait_time=30):
+  def lb_healthcheck(self, new_ids, attempt=0, wait_time=0):
     ''' Confirm that the healthchecks report back OK in the LB. '''
-    lb = self.get_lb()
-    inst_length = len(new_ids)
-    for inst_id in range(inst_length):
-      count = 0
-      instance_id = self.conn_elb.describe_instance_health(lb)[inst_id]
-      while instance_id.state != 'InService':
-        logging.warning("Load balancer healthcheck is returning {0} for {1}. Retrying after 10 seconds. Count == {2}".format(instance_id.state, instance_id.instance_id, count))
-        instance_id = self.conn_elb.describe_instance_health(lb)[inst_id]
-        count = (count + 1)
-        if instance_id.state != 'InService' and (count >= retry):
-          logging.error("Load balancer healthcheck returning {0} for {1} and has exceeded the timeout threshold set. Please roll back.".format(instance_id.state, instance_id.instance_id)) 
-          self.revert_deployment()
-        sleep(wait_time)
-      logging.info("ELB healthcheck OK == {0}: {1}".format(instance_id.instance_id, instance_id.state))
+    try:
+      attempt += 1
+      if attempt > self.MAX_RETRIES:
+        logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
+        self.revert_deployment()
+      sleep(wait_time)
+      instance_ids = self.conn_elb.describe_instance_health(self.load_balancer, new_ids)
+      status = filter(lambda instance: instance.state != "InService", instance_ids)
+      if status:
+        logging.info('Must check load balancer again. Following instance(s) are not "InService": {0}'.format(status))
+        return self.lb_healthcheck(new_ids, attempt=attempt, wait_time=30)
+    except Exception as e:
+      logging.error('Failed to health check load balancer instance states. Error: {0}'.format(e))
+      self.revert_deployment()
+    logging.info('ELB healthcheck OK')
     return True
 
   def confirm_lb_has_only_new_instances(self, wait_time=60):
     ''' Confirm that only new instances with the current build tag are in the load balancer '''
     sleep(wait_time) # Allotting time for the instances to shut down
-    lb = self.get_lb()
-    instance_ids = self.conn_elb.describe_instance_health(lb)
+    instance_ids = self.conn_elb.describe_instance_health(self.load_balancer)
     for instance in instance_ids:
       build = self.conn_ec2.get_all_reservations(instance.instance_id)[0].instances[0].tags['BUILD']
       if build != self.buildNum:
         logging.error("There is still an old instance in the ELB: {0}. Please investigate".format(instance))
         exit(self.exit_error_code)
-    logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, lb))
+    logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, self.load_balancer))
     return instance_ids
 
   def tag_ami(self, ami_id, env):
@@ -239,11 +242,13 @@ class RollingDeploy(object):
     group_name = self.get_autoscale_group_name()
     new_instance_ids = self.gather_instance_info(group_name)
     for instance_id in new_instance_ids:
-      self.conn_auto.terminate_instance(instance_id, decrement_capacity=True)
-      logging.info("Removed {0} from autoscale group".format(instance_id))
+      try:
+        self.conn_auto.terminate_instance(instance_id, decrement_capacity=True)
+        logging.info("Removed {0} from autoscale group".format(instance_id))
+      except:
+        logging.warning('Failed to remove instance: {0}.'.format(instance_id))
     logging.error("REVERT COMPLETE!")
     exit(self.exit_error_code)
-    
 
 def get_args(): # pragma: no cover
   parser = argparse.ArgumentParser()
