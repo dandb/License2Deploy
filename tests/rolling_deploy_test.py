@@ -10,6 +10,7 @@ from moto import mock_ec2
 from moto import mock_elb
 from License2Deploy.rolling_deploy import RollingDeploy
 from License2Deploy.AWSConn import AWSConn
+import sys
 
 class RollingDeployTest(unittest.TestCase):
 
@@ -24,6 +25,7 @@ class RollingDeployTest(unittest.TestCase):
   @mock_elb
   @mock_ec2
   def setUp(self):
+    self.setUpELB()
     self.rolling_deploy = RollingDeploy('stg', 'server-gms-extender', '0', 'ami-abcd1234', None, './regions.yml')
 
   def get_autoscaling_configurations(self, launch_configuration_name, autoscaling_group_name):
@@ -59,13 +61,14 @@ class RollingDeployTest(unittest.TestCase):
       conn.create_auto_scaling_group(group)
 
   @mock_elb
-  def setUpELB(self):
+  def setUpELB(self, env='stg'):
     conn_elb = boto.connect_elb()
     zones = ['us-east-1a']
     ports = [(80, 8080, 'http')]
-    conn_elb.create_load_balancer('servergmsextenderELBstg', zones, ports)
-    balancers = conn_elb.get_all_load_balancers(load_balancer_names=['servergmsextenderELBstg'])
-    self.assertEqual(balancers[0].name, 'servergmsextenderELBstg')
+    load_balancer_name = 'servergmsextenderELB{0}'.format(env)
+    conn_elb.create_load_balancer(load_balancer_name, zones, ports)
+    balancers = conn_elb.get_all_load_balancers(load_balancer_names=[load_balancer_name])
+    self.assertEqual(balancers[0].name, load_balancer_name)
 
   @mock_ec2
   @mock_elb
@@ -135,11 +138,15 @@ class RollingDeployTest(unittest.TestCase):
     self.setUpELB()
     self.assertEqual(u'servergmsextenderELBstg', self.rolling_deploy.get_lb()) #Return All LB's with the proper build number
 
+  # assertRaises is a context manager since Python 2.7. Only testing in Python 2.7
+  # https://docs.python.org/2.7/library/unittest.html
   @mock_elb
   def test_get_lb_failure(self):
-    self.setUpELB()
-    self.rolling_deploy = RollingDeploy('stg', 'fake-server-gms-extender', '0', 'bad', 'server-deploy', './regions.yml') #Need for exception
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_lb()) #Will raise exception because name can't be found
+    if sys.version_info >= (2, 7):
+      self.setUpELB()
+      with self.assertRaises(SystemExit) as rolling_deploy:
+        RollingDeploy('stg', 'fake-server-gms-extender', '0', 'bad', 'server-deploy', './regions.yml')
+      self.assertEqual(2, rolling_deploy.exception.code)
 
   @mock_ec2
   @mock_elb
@@ -173,7 +180,9 @@ class RollingDeployTest(unittest.TestCase):
     self.assertNotEqual(group, self.GMS_AUTOSCALING_GROUP_PRD)
 
   @mock_autoscaling
+  @mock_elb
   def test_get_autoscale_group_name_prd(self):
+    self.setUpELB(env='prd')
     self.rolling_deploy = RollingDeploy('prd', 'server-gms-extender', '0', 'ami-test212', None, './regions.yml')
     autoscaling_configurations = list()
     autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG))
@@ -208,7 +217,6 @@ class RollingDeployTest(unittest.TestCase):
   def test_get_all_instance_ids(self):
     self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
     conn = boto.connect_ec2()
-    instance_id_list = []
     reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
     instance_ids = reservation.instances
     rslt = self.rolling_deploy.get_all_instance_ids(self.GMS_AUTOSCALING_GROUP_STG)
