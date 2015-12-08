@@ -43,7 +43,7 @@ class RollingDeploy(object):
         logging.info("AMI {0} is ready".format(ami_id))
         return True
       elif time() > timeout:
-        logging.error("AMI {0} is not ready after {1} minutes, please investigate".format(ami_id, timeout))
+        logging.error("AMI {0} is not ready after {1} minutes, please investigate".format(ami_id, timer))
         exit(self.exit_error_code)
       else:
         logging.warning("AMI {0} is not ready yet, retrying in 30 seconds".format(ami_id))
