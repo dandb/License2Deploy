@@ -182,15 +182,19 @@ class RollingDeploy(object):
     logging.info('ELB healthcheck OK')
     return True
 
-  def confirm_lb_has_only_new_instances(self, wait_time=60):
+  def confirm_lb_has_only_new_instances(self, wait_time=60, attempt=0):
     ''' Confirm that only new instances with the current build tag are in the load balancer '''
+    attempt += 1  
     sleep(wait_time) # Allotting time for the instances to shut down
     instance_ids = self.conn_elb.describe_instance_health(self.load_balancer)
     for instance in instance_ids:
-      build = self.conn_ec2.get_all_reservations(instance.instance_id)[0].instances[0].tags['BUILD']
-      if build != self.buildNum:
-        logging.error("There is still an old instance in the ELB: {0}. Please investigate".format(instance))
-        exit(self.exit_error_code)
+        build = self.conn_ec2.get_all_reservations(instance.instance_id)[0].instances[0].tags['BUILD']
+        if build != self.buildNum:
+            if attempt < self.MAX_RETRIES:
+                self.confirm_lb_has_only_new_instances(attempt=attempt)
+            else:
+                logging.error("There is still an old instance in the ELB: {0}. Please investigate".format(instance))
+                exit(self.exit_error_code)
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, self.load_balancer))
     return instance_ids
 
