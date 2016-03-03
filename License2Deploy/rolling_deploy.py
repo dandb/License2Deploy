@@ -182,7 +182,7 @@ class RollingDeploy(object):
     logging.info('ELB healthcheck OK')
     return True
 
-  def confirm_lb_has_only_new_instances(self, wait_time=60):
+  def confirm_lb_has_only_new_instances(self, wait_time=120):
     ''' Confirm that only new instances with the current build tag are in the load balancer '''
     sleep(wait_time) # Allotting time for the instances to shut down
     instance_ids = self.conn_elb.describe_instance_health(self.load_balancer)
