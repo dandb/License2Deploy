@@ -68,3 +68,42 @@ python setup.py install
 python setup.py test
 
 python License2Deploy/rolling_deploy.py
+
+
+Sample Testing
+===============
+Use Case: `ami-37285b57 with BUILD=1 Tag` should be replaced / (rolling deploy) with `ami-78245718 with BUILD=2 Tag`. 
+    - Both these AMIs is a linux ami with apache running that woulk respond for "index.html".
+
+Step 1: Create AMIs. For testing, lets reuse public amis - "ami-37285b57" and "ami-78245718". If you have properly built app AMIs, please use that.
+
+Step 2: Create a Tag "BUILD" which denotes the CI build number
+  - Command: 
+      - aws ec2 create-tags --tags --resources ami-37285b57 --tags Key=BUILD,Value=1
+      - aws ec2 create-tags --tags --resources ami-78245718 --tags Key=BUILD,Value=2
+      
+Step 3: Create a Stack with AMI as ami-37285b57, and the ASG will create 2 EC2 instances with the tag BUILD:1.
+  - Command:
+      - ./CreateTestStack.sh
+  - Note:
+      - Update your  public key name on "KeyName" at line no 10
+
+Step 4: Update the Stack with AMI as ami-78245718, whose tag is  BUILD:2
+  - Command:
+      - ./UpdateTestStack.sh
+  - Note:
+      - Update your  public key name on "KeyName" at line no 10
+
+Step 5: Run the Rolling deploy to kill the old EC2 instance with tag BUILD:1 (ami-37285b57) , and spun of 2 new EC2 instances with tag BUILD:2 (ami-78245718)
+  - Command:
+      - sudo python License2Deploy/rolling_deploy.py -e qa -p PT -b 2 -a ami-78245718
+  - Note:
+      - where, -e is environment, -p is applicaiton project, -b is BUILD Tag value, -a is AMI ID
+      - your name of the ASG, LB, LC should have the string - project name and environment name, so that the rolling-deploy script can pick the right one.
+      - Place your regions.yml at /opt/License2Deploy/regions.yml
+      - If you are using multiple profile for aws-credentials, mention your aws profile by adding another param -P xyz
+      
+      
+Step 6: To Delete the Stack
+  - Command:
+      - aws cloudformation delete-stack --stack-name 'PtTestStack'
