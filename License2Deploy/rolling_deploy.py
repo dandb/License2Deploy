@@ -23,6 +23,7 @@ class RollingDeploy(object):
     self.conn_ec2 = AWSConn.aws_conn_ec2(self.region, self.profile_name)
     self.conn_elb = AWSConn.aws_conn_elb(self.region, self.profile_name)
     self.conn_auto = AWSConn.aws_conn_auto(self.region, self.profile_name)
+    self.conn_cloudwatch = AWSConn.aws_conn_cloudwatch(self.region, self.profile_name)
     self.exit_error_code = 2
     self.load_balancer = self.get_lb()
 
@@ -222,11 +223,47 @@ class RollingDeploy(object):
     self.wait_for_new_instances(new_instance_ids) #Wait for new instances to be up and ready
     self.lb_healthcheck(new_instance_ids) #Once instances are ready, healthcheck. If successful, decrease desired count.
 
+  def retrieve_project_cloudwatch_alarms(self):
+    """ Retrieve all the Cloud-Watch alarms for the given project and environment """
+    try:
+      all_cloud_watch_alarms = self.conn_cloudwatch.describe_alarms()
+    except Exception as e:
+      logging.error("Error while retrieving the list of cloud-watch alarms. Error: {0}".format(e))
+      exit(self.exit_error_code)
+    project_cloud_watch_alarms = filter(lambda alarm: self.project in alarm.name and self.env in alarm.name, all_cloud_watch_alarms)
+    if len(project_cloud_watch_alarms) == 0:
+       logging.info("No cloud-watch alarm found")
+    return project_cloud_watch_alarms
+
+  def disable_project_cloudwatch_alarms(self):
+    ''' Disable all the cloud watch alarms '''
+    project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
+    for alarm in project_cloud_watch_alarms:
+      try:
+        self.conn_cloudwatch.disable_alarm_actions(alarm.name)
+        logging.info("Disabled cloud-watch alarm. {0}".format(alarm.name))
+      except Exception as e:
+        logging.error("Unable to disable the cloud-watch alarm, please investigate: {0}".format(e))
+        exit(self.exit_error_code)
+
+  def enable_project_cloudwatch_alarms(self):
+    ''' Enable all the cloud watch alarms '''
+    project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
+    for alarm in project_cloud_watch_alarms:
+      logging.info("Found an alarm. {0}".format(alarm.name))
+      try:
+        self.conn_cloudwatch.enable_alarm_actions(alarm.name)
+        logging.info("Enabled cloud-watch alarm. {0}".format(alarm.name))
+      except Exception as e:
+        logging.error("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
+        exit(self.exit_error_code)
+
   def deploy(self): # pragma: no cover
     ''' Rollin Rollin Rollin, Rawhide! '''
     group_name = self.get_autoscale_group_name()
     self.wait_ami_availability(self.ami_id)
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.buildNum, group_name))
+    self.disable_project_cloudwatch_alarms()
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'increase'), group_name)
     logging.info("Sleeping for 240 seconds to allow for instances to spin up")
     sleep(240) #Need to wait until the instances come up in the load balancer
@@ -234,6 +271,7 @@ class RollingDeploy(object):
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
     self.confirm_lb_has_only_new_instances()
     self.tag_ami(self.ami_id, self.env)
+    self.enable_project_cloudwatch_alarms()
     logging.info("Deployment Complete!")
 
   def revert_deployment(self): #pragma: no cover

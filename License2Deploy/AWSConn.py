@@ -3,6 +3,7 @@
 import boto.ec2 as ec2
 import boto.ec2.autoscale as a
 import boto.ec2.elb as elb
+import boto.ec2.cloudwatch as cloudwatch
 import logging
 import yaml
 
@@ -28,6 +29,14 @@ class AWSConn(object):
   def aws_conn_elb(region, profile='default'):
     try:
       conn = elb.connect_to_region(region, profile_name=profile)
+      return conn
+    except Exception as e:
+      logging.error("Unable to connect to region, please investigate: {0}".format(e))
+
+  @staticmethod
+  def aws_conn_cloudwatch(region, profile='default'):
+    try: 
+      conn = cloudwatch.connect_to_region(region, profile_name=profile)
       return conn
     except Exception as e:
       logging.error("Unable to connect to region, please investigate: {0}".format(e))
