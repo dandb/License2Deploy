@@ -5,9 +5,12 @@ import boto
 import os
 from boto.ec2.autoscale.launchconfig import LaunchConfiguration
 from boto.ec2.autoscale.group import AutoScalingGroup
+from boto.ec2.cloudwatch.alarm import MetricAlarm
+from boto.ec2.cloudwatch.dimension import Dimension
 from moto import mock_autoscaling
 from moto import mock_ec2
 from moto import mock_elb
+from moto.cloudwatch import mock_cloudwatch
 from License2Deploy.rolling_deploy import RollingDeploy
 from License2Deploy.AWSConn import AWSConn
 import sys
@@ -21,6 +24,7 @@ class RollingDeployTest(unittest.TestCase):
   GMS_LAUNCH_CONFIGURATION_PRD = 'server-backend-prd-servergmsextenderLCprd-46TIE5ZFQTLB'
   GMS_AUTOSCALING_GROUP_STG = 'server-backend-stg-servergmsextenderASGstg-3ELOD1FOTESTING'
   GMS_AUTOSCALING_GROUP_PRD = 'server-backend-prd-servergmsextenderASGprd-3ELOD1FOTESTING'
+
   @mock_autoscaling
   @mock_elb
   @mock_ec2
@@ -35,7 +39,7 @@ class RollingDeployTest(unittest.TestCase):
     }
 
   @mock_autoscaling
-  def setUpAutoScaleGroup(self, configurations):
+  def setUpAutoScaleGroup(self, configurations, env="stg"):
     conn = boto.connect_autoscale()
     for configuration in configurations:
       config = LaunchConfiguration(
@@ -43,6 +47,7 @@ class RollingDeployTest(unittest.TestCase):
         image_id='ami-abcd1234',
         instance_type='m1.medium',
       )
+      load_balancer_name = 'servergmsextenderELB{0}'.format(env)
       group = AutoScalingGroup(
         name=configuration[self.autoscaling_group_name],
         availability_zones=['us-east-1a'],
@@ -53,7 +58,7 @@ class RollingDeployTest(unittest.TestCase):
         max_size=10,
         min_size=2,
         launch_config=config,
-        load_balancers=['servergmsextenderELBstg'],
+        load_balancers=[load_balancer_name],
         vpc_zone_identifier='subnet-1234abcd',
         termination_policies=["Default"],
       )
@@ -88,6 +93,76 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(instance_id_list.sort(), elb_ids.sort())
 
     return [conn, instance_id_list]
+
+  @mock_cloudwatch
+  def setUpCloudWatch(self, instance_ids, env="stg"):
+    alarm = MetricAlarm(
+      name = "servergmsextender_CloudWatchAlarm" + env,
+      namespace = "AWS/EC2",
+      metric = "CPUUtilization",
+      comparison = ">=",
+      threshold = "90",
+      evaluation_periods = 1,
+      statistic = "Average",
+      period = 300,
+      dimensions = {'InstanceId': instance_ids},
+      alarm_actions=['arn:alarm'],
+      ok_actions=['arn:ok']
+    )
+    watch_conn = boto.connect_cloudwatch()
+    watch_conn.put_metric_alarm(alarm)
+
+  @mock_cloudwatch
+  def setUpCloudWatchWithWrongConfig(self, instance_ids, env="stg"):
+    alarm = MetricAlarm(
+      name = "servergmsextender_CloudWatchAlarm" + env,
+      namespace = "AWS/EC2",
+      metric = "CPUUtilization",
+      comparison = "GreaterThanThreshold", # wrong configuration that would generate error.
+      threshold = "90",
+      evaluation_periods = 1,
+      statistic = "Average",
+      period = 300,
+      dimensions = {'InstanceId': instance_ids},
+      alarm_actions=['arn:alarm'],
+      ok_actions=['arn:ok']
+    )
+    watch_conn = boto.connect_cloudwatch()
+    watch_conn.put_metric_alarm(alarm)
+    
+  @mock_cloudwatch
+  def test_retrieve_project_cloudwatch_alarms(self):
+    instance_ids = self.setUpEC2()
+    self.setUpCloudWatch(instance_ids)
+    cloud_watch_alarms = self.rolling_deploy.retrieve_project_cloudwatch_alarms()
+    print cloud_watch_alarms
+    self.assertEqual(1, len(cloud_watch_alarms))
+
+  @mock_cloudwatch
+  def test_retrieve_project_cloudwatch_alarms_with_no_valid_alarms(self):
+    instance_ids = self.setUpEC2()
+    self.setUpCloudWatch(instance_ids)
+    self.rolling_deploy.env = "wrong_env_prd" # set a wrong environment 
+    cloud_watch_alarms = self.rolling_deploy.retrieve_project_cloudwatch_alarms()
+    self.assertEqual(0, len(cloud_watch_alarms))
+
+  @mock_cloudwatch
+  def test_retrieve_project_cloudwatch_alarms_with_wrong_config(self):
+    instance_ids = self.setUpEC2()
+    self.setUpCloudWatchWithWrongConfig(instance_ids)
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.retrieve_project_cloudwatch_alarms())
+
+  @mock_cloudwatch
+  def test_enable_project_cloudwatch_alarms_Error(self):
+    instance_ids = self.setUpEC2()
+    self.setUpCloudWatch(instance_ids)
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.enable_project_cloudwatch_alarms())
+
+  @mock_cloudwatch
+  def test_disable_project_cloudwatch_alarms_Error(self):
+    instance_ids = self.setUpEC2()
+    self.setUpCloudWatch(instance_ids)
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.disable_project_cloudwatch_alarms())
 
   @mock_ec2
   def test_tag_ami(self):
@@ -185,9 +260,8 @@ class RollingDeployTest(unittest.TestCase):
     self.setUpELB(env='prd')
     self.rolling_deploy = RollingDeploy('prd', 'server-gms-extender', '0', 'ami-test212', None, './regions.yml')
     autoscaling_configurations = list()
-    autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG))
     autoscaling_configurations.append(self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_PRD, self.GMS_AUTOSCALING_GROUP_PRD))
-    self.setUpAutoScaleGroup(autoscaling_configurations)
+    self.setUpAutoScaleGroup(autoscaling_configurations, env='prd')
     group = self.rolling_deploy.get_autoscale_group_name()
     self.assertEqual(group, self.GMS_AUTOSCALING_GROUP_PRD)
     self.assertNotEqual(group, self.GMS_AUTOSCALING_GROUP_STG)
@@ -215,6 +289,7 @@ class RollingDeployTest(unittest.TestCase):
   @mock_autoscaling
   @mock_elb
   def test_get_all_instance_ids(self):
+    self.setUpELB()
     self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
     conn = boto.connect_ec2()
     reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
@@ -274,4 +349,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
