@@ -8,14 +8,17 @@ from setuptools import setup, Command
 install_requires = [
     "boto",
     "PyYaml",
-    "argparse"
+    "argparse",
+    'boto3'
   ]
 
 tests_require = [
     "mock",
     "boto",
     "moto",
-    "PyYaml"
+    "PyYaml",
+    'placebo',
+    'boto3'
   ]
 
 def read(fname):

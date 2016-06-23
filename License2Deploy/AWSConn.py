@@ -4,6 +4,7 @@ import boto.ec2 as ec2
 import boto.ec2.autoscale as a
 import boto.ec2.elb as elb
 import boto.ec2.cloudwatch as cloudwatch
+from boto3.session import Session
 import logging
 import yaml
 
@@ -40,6 +41,12 @@ class AWSConn(object):
       return conn
     except Exception as e:
       logging.error("Unable to connect to region, please investigate: {0}".format(e))
+
+  @staticmethod
+  def get_boto3_client(client_type, region, profile='default', session=None):
+    if not session:
+      session = Session(region_name=region, profile_name=profile)
+    return session.client(client_type)
 
   @staticmethod
   def load_config(config):
