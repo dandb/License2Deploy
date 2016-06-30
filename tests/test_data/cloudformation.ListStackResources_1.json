@@ -1,0 +1,139 @@
+{
+    "status_code": 200, 
+    "data": {
+        "ResponseMetadata": {
+            "HTTPStatusCode": 200, 
+            "RequestId": "27063939-3"
+        }, 
+        "StackResourceSummaries": [
+            {
+                "ResourceType": "AWS::S3::Bucket", 
+                "PhysicalResourceId": "buket-1",
+                "LastUpdatedTimestamp": {
+                    "hour": 20, 
+                    "__class__": "datetime", 
+                    "month": 2, 
+                    "second": 21, 
+                    "microsecond": 285000, 
+                    "year": 2016, 
+                    "day": 23, 
+                    "minute": 21
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "bucketintropo"
+            }, 
+            {
+                "ResourceType": "AWS::S3::Bucket", 
+                "PhysicalResourceId": "bucket-2",
+                "LastUpdatedTimestamp": {
+                    "hour": 20, 
+                    "__class__": "datetime", 
+                    "month": 2, 
+                    "second": 21, 
+                    "microsecond": 266000, 
+                    "year": 2016, 
+                    "day": 23, 
+                    "minute": 21
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "buckettropo2"
+            }, 
+            {
+                "ResourceType": "AWS::AutoScaling::AutoScalingGroup", 
+                "PhysicalResourceId": "dnbi-backend-qa-dnbicacheASGqa-89YEUHYGHFJ",
+                "LastUpdatedTimestamp": {
+                    "hour": 22, 
+                    "__class__": "datetime", 
+                    "month": 6, 
+                    "second": 15, 
+                    "microsecond": 62000, 
+                    "year": 2016, 
+                    "day": 14, 
+                    "minute": 26
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "ASG1"
+            }, 
+            {
+                "ResourceType": "AWS::ElasticLoadBalancing::LoadBalancer", 
+                "PhysicalResourceId": "ELB-1",
+                "LastUpdatedTimestamp": {
+                    "hour": 20, 
+                    "__class__": "datetime", 
+                    "month": 2, 
+                    "second": 22, 
+                    "microsecond": 596000, 
+                    "year": 2016, 
+                    "day": 23, 
+                    "minute": 21
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "ELB1"
+            }, 
+            {
+                "ResourceType": "AWS::AutoScaling::LaunchConfiguration", 
+                "PhysicalResourceId": "dnbi-backend-qa-dnbicacheLCqa-89SYRUIFHEUI",
+                "LastUpdatedTimestamp": {
+                    "hour": 22, 
+                    "__class__": "datetime", 
+                    "month": 6, 
+                    "second": 8, 
+                    "microsecond": 201000, 
+                    "year": 2016, 
+                    "day": 14, 
+                    "minute": 26
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "LC1"
+            }, 
+            {
+                "ResourceType": "AWS::AutoScaling::AutoScalingGroup", 
+                "PhysicalResourceId": "dnbi-backend-qa-servergmsextenderASGqa-QO8UAEHUFJD",
+                "LastUpdatedTimestamp": {
+                    "hour": 21, 
+                    "__class__": "datetime", 
+                    "month": 6, 
+                    "second": 18, 
+                    "microsecond": 223000, 
+                    "year": 2016, 
+                    "day": 23, 
+                    "minute": 7
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "ASG2"
+            }, 
+            {
+                "ResourceType": "AWS::ElasticLoadBalancing::LoadBalancer", 
+                "PhysicalResourceId": "dnbiservergmsextenderELB",
+                "LastUpdatedTimestamp": {
+                    "hour": 20, 
+                    "__class__": "datetime", 
+                    "month": 2, 
+                    "second": 23, 
+                    "microsecond": 442000, 
+                    "year": 2016, 
+                    "day": 23, 
+                    "minute": 21
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "ELB2"
+            }, 
+            {
+                "ResourceType": "AWS::AutoScaling::LaunchConfiguration", 
+                "PhysicalResourceId": "dnbi-backend-qa-servergmsextenderLCqa-IUEAHJKDIUJ",
+                "LastUpdatedTimestamp": {
+                    "hour": 21, 
+                    "__class__": "datetime", 
+                    "month": 6, 
+                    "second": 12, 
+                    "microsecond": 144000, 
+                    "year": 2016, 
+                    "day": 23, 
+                    "minute": 7
+                }, 
+                "ResourceStatus": "UPDATE_COMPLETE", 
+                "LogicalResourceId": "LC2"
+            }
+        ]
+    }
+}

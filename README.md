@@ -20,8 +20,8 @@ The rolling deployment will:
 Usage
 ==================
 ```
-usage: rolling_deploy.py [-h] -e ENV -p PROJECT -b BUILDNUM -a AMIID
-                         [-P PROFILE] [-c CONFIG]
+usage: rolling_deploy.py [-h] -e ENV -p PROJECT -b BUILD_NUM -a AMI_ID
+                         [-P PROFILE] [-c CONFIG] [-s STACK_NAME]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -29,9 +29,9 @@ optional arguments:
                         Environment
   -p PROJECT, --project PROJECT
                         Project name
-  -b BUILDNUM, --build BUILDNUM
+  -b BUILD_NUM, --build BUILD_NUM
                         Build Number
-  -a AMIID, --ami AMIID
+  -a AMI_ID, --ami AMI_ID
                         AMI ID
   -P PROFILE, --profile PROFILE
                         Profile name as designated in aws credentials/config
@@ -39,6 +39,8 @@ optional arguments:
   -c CONFIG, --config CONFIG
                         Config file Location, eg.
                         /opt/License2Deploy/config.yml
+  -s STACK_NAME, --stack STACK_NAME
+                        Stack name if AutoScaling Group created via CloudFormation
 ```
 Requirements
 ==================
