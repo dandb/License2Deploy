@@ -2,11 +2,9 @@
 
 import unittest
 import boto
-import os
 from boto.ec2.autoscale.launchconfig import LaunchConfiguration
 from boto.ec2.autoscale.group import AutoScalingGroup
 from boto.ec2.cloudwatch.alarm import MetricAlarm
-from boto.ec2.cloudwatch.dimension import Dimension
 from moto import mock_autoscaling
 from moto import mock_ec2
 from moto import mock_elb
@@ -206,6 +204,7 @@ class RollingDeployTest(unittest.TestCase):
   @mock_elb
   def test_confirm_lb_has_only_new_instances(self):
     instance_ids = self.setUpEC2()[1]
+    self.rolling_deploy.load_balancer = self.rolling_deploy.get_lb()
     self.assertEqual(len(instance_ids), len(self.rolling_deploy.confirm_lb_has_only_new_instances(1))) #Return All LB's with the proper build number
 
   @mock_elb
@@ -220,7 +219,8 @@ class RollingDeployTest(unittest.TestCase):
     if sys.version_info >= (2, 7):
       self.setUpELB()
       with self.assertRaises(SystemExit) as rolling_deploy:
-        RollingDeploy('stg', 'fake-server-gms-extender', '0', 'bad', 'server-deploy', './regions.yml')
+        bad_rolling_deploy = RollingDeploy('stg', 'fake-gms-extender', '0', 'bad', None, './regions.yml')
+        bad_rolling_deploy.load_balancer = bad_rolling_deploy.get_lb()
       self.assertEqual(2, rolling_deploy.exception.code)
 
   @mock_ec2
@@ -310,12 +310,12 @@ class RollingDeployTest(unittest.TestCase):
          if [y for y in name.tags if y == 'BUILD' and name.tags['BUILD'] == '0']:
            new_inst.append(name.id)
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
+    self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
   @mock_ec2
   def test_get_instance_ids_by_requested_build_tag_failure(self):
     self.setUpEC2()
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag([], 0))
+    self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag([], 0))
 
   @mock_autoscaling
   def test_set_autoscale_instance_desired_count(self):
