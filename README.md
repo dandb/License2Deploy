@@ -22,6 +22,7 @@ Usage
 ```
 usage: rolling_deploy.py [-h] -e ENV -p PROJECT -b BUILD_NUM -a AMI_ID
                          [-P PROFILE] [-c CONFIG] [-s STACK_NAME]
+                         [-C CREATION_WAIT] [-r READY_WAIT] [-H HEALTH_WAIT]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -41,6 +42,18 @@ optional arguments:
                         /opt/License2Deploy/config.yml
   -s STACK_NAME, --stack STACK_NAME
                         Stack name if AutoScaling Group created via CloudFormation
+  -C CREATION_WAIT, --creation-wait CREATION_WAIT
+                        Time to wait for EC2 instances to be created
+                        (# of tries, interval of each try in seconds), default (10, 60)
+                        e.g. -C 10 60
+  -r READY_WAIT, --ready-wait READY_WAIT
+                        Time to wait for EC2 instances to come up and be ready
+                        (# of tries, interval of each try in seconds), default (10, 30)
+                        e.g. -r 10 30
+  -H HEALTH_WAIT, --health-wait HEALTH_WAIT
+                        Time to wait for EC2 instances to be health checked
+                        (# of tries, interval of each try in seconds), default (10, 30)
+                        e.g. -H 10 30
 ```
 Requirements
 ==================

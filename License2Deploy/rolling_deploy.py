@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import logging
 import argparse
@@ -6,6 +6,7 @@ from sys import exit, argv
 from time import sleep, time
 from AWSConn import AWSConn
 from set_logging import SetLogging
+from retry.api import retry_call
 
 class RollingDeploy(object):
 
@@ -19,7 +20,10 @@ class RollingDeploy(object):
                profile_name=None,
                regions_conf=None,
                stack_name=None,
-               session=None):
+               session=None,
+               creation_wait=[10, 60],
+               ready_wait=[10, 30],
+               health_wait=[10, 30]):
     self.env = env
     self.session = session
     self.project = project.replace('-','')
@@ -39,6 +43,9 @@ class RollingDeploy(object):
     self.cloudformation_client = AWSConn.get_boto3_client('cloudformation', self.region, self.profile_name, session)
     self.exit_error_code = 2
     self.load_balancer = False
+    self.creation_wait = creation_wait
+    self.ready_wait = ready_wait
+    self.health_wait = health_wait
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -160,14 +167,11 @@ class RollingDeploy(object):
       new_instances += [instance_id for new_id in instances_build_tags if new_id.tags['BUILD'] == str(build)]
 
     if not new_instances:
-      logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.\nInstance ID List: {1}".format(build, id_list))
-      group_name = self.get_autoscale_group_name()
-      self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
-      exit(self.exit_error_code)
-
-    id_ip_dict = self.get_instance_ip_addrs(new_instances)
-    logging.info("New Instance List with IP Addresses: {0}".format(id_ip_dict))
-    return new_instances
+      raise Exception('There are no instances in the group with build number {0}'.format(self.build_number))
+    else:
+      ip_dict = self.get_instance_ip_addrs(new_instances)
+      logging.info("New Instance List with IP Addresses: {0}".format(ip_dict))
+      return new_instances
 
   def wait_for_new_instances(self, instance_ids, retry=10, wait_time=30):
     ''' Monitor new instances that come up and wait until they are ready '''
@@ -188,24 +192,15 @@ class RollingDeploy(object):
           else:
             logging.info("{0} is in a healthy state. Moving on...".format(instance))
 
-  def lb_healthcheck(self, new_ids, attempt=0, wait_time=0):
+  def lb_healthcheck(self, new_ids):
     ''' Confirm that the healthchecks report back OK in the LB. '''
-    try:
-      attempt += 1
-      if attempt > self.MAX_RETRIES:
-        logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
-        self.revert_deployment()
-      sleep(wait_time)
-      instance_ids = self.conn_elb.describe_instance_health(self.load_balancer, new_ids)
-      status = filter(lambda instance: instance.state != "InService", instance_ids)
-      if status:
-        logging.info('Must check load balancer again. Following instance(s) are not "InService": {0}'.format(status))
-        return self.lb_healthcheck(new_ids, attempt=attempt, wait_time=30)
-    except Exception as e:
-      logging.error('Failed to health check load balancer instance states. Error: {0}'.format(e))
-      self.revert_deployment()
-    logging.info('ELB healthcheck OK')
-    return True
+    instance_ids = self.conn_elb.describe_instance_health(self.load_balancer, new_ids)
+    status = filter(lambda instance: instance.state != "InService", instance_ids)
+    if status:
+      raise Exception('Must check load balancer again. Following instance(s) are not "InService": {0}'.format(status))
+    else:
+      logging.info('ELB healthcheck OK')
+      return True
 
   def confirm_lb_has_only_new_instances(self, wait_time=60):
     ''' Confirm that only new instances with the current build tag are in the load balancer '''
@@ -238,14 +233,32 @@ class RollingDeploy(object):
 
   def gather_instance_info(self, group): #pragma: no cover
     instance_ids = self.get_all_instance_ids(group)
+    logging.info("Instance ID List: {0}".format(instance_ids))
     new_instance_ids = self.get_instance_ids_by_requested_build_tag(instance_ids, self.build_number)
     return new_instance_ids
 
-  def healthcheck_new_instances(self, group_name): # pragma: no cover
-    ''' Healthchecking new instances to ensure deployment was successful '''
-    new_instance_ids = self.gather_instance_info(group_name)
-    self.wait_for_new_instances(new_instance_ids) #Wait for new instances to be up and ready
-    self.lb_healthcheck(new_instance_ids) #Once instances are ready, healthcheck. If successful, decrease desired count.
+  def launch_new_instances(self, group_name): # pragma: no cover
+    # step 1: wait for ec2 creating instances
+    try:
+      logging.info("Trying for maximum 10 minutes to allow for instances to be created.")
+      new_instance_ids = retry_call(self.gather_instance_info, fargs=[group_name], tries=self.creation_wait[0], delay=self.creation_wait[1], logger=logging)
+    except Exception as e:
+      logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.".format(self.build_number))
+      group_name = self.get_autoscale_group_name()
+      self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
+      exit(self.exit_error_code)
+
+    # step 2: waiting for instances coming up and ready
+    logging.info("Waiting maximum 5 minutes for instances to be ready.")
+    self.wait_for_new_instances(new_instance_ids, self.ready_wait[0], self.ready_wait[1]) #Wait for new instances to be up and ready
+
+    # step 3: waiting for instance health check to be completed
+    try:
+      logging.info("Trying for maximum 5 minutes to health-check all instances.")
+      retry_call(self.lb_healthcheck, fargs=[new_instance_ids], tries=self.health_wait[0], delay=self.health_wait[1], logger=logging)
+    except Exception as e:
+      logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
+      self.revert_deployment()
 
   def retrieve_project_cloudwatch_alarms(self):
     """ Retrieve all the Cloud-Watch alarms for the given project and environment """
@@ -290,9 +303,7 @@ class RollingDeploy(object):
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, group_name))
     self.disable_project_cloudwatch_alarms()
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'increase'), group_name)
-    logging.info("Sleeping for 240 seconds to allow for instances to spin up")
-    sleep(240) #Need to wait until the instances come up in the load balancer
-    self.healthcheck_new_instances(group_name)
+    self.launch_new_instances(group_name)
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
     self.confirm_lb_has_only_new_instances()
     self.tag_ami(self.ami_id, self.env)
@@ -322,12 +333,15 @@ def get_args(): # pragma: no cover
   parser.add_argument('-P', '--profile', default='default', action='store', dest='profile', help='Profile name as designated in aws credentials/config files', type=str)
   parser.add_argument('-c', '--config', default='/opt/License2Deploy/regions.yml', action='store', dest='config', help='Config file Location, eg. /opt/License2Deploy/regions.yml', type=str)
   parser.add_argument('-s', '--stack', action='store', dest='stack_name', help='Stack name if AutoScaling Group created via CloudFormation', type=str)
+  parser.add_argument('-C', '--creation-wait', action='store', dest='creation_wait', help='Wait time for ec2 instance creation', type=int, nargs=2, default=[10, 60])
+  parser.add_argument('-r', '--ready-wait', action='store', dest='ready_wait', help='Wait time for ec2 instance to be ready', type=int, nargs=2, default=[10, 30])
+  parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[10, 30])
   return parser.parse_args()
 
 def main(): # pragma: no cover
   args = get_args()
   SetLogging.setup_logging()
-  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name)
+  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, None, args.creation_wait, args.ready_wait, args.health_wait)
   deployObj.deploy()
   
 if __name__ == "__main__": # pragma: no cover
