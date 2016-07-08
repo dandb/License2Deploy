@@ -23,7 +23,8 @@ class RollingDeploy(object):
                session=None,
                creation_wait=[10, 60],
                ready_wait=[10, 30],
-               health_wait=[10, 30]):
+               health_wait=[10, 30],
+               only_new_wait=[10, 30]):
     self.env = env
     self.session = session
     self.project = project.replace('-','')
@@ -46,6 +47,7 @@ class RollingDeploy(object):
     self.creation_wait = creation_wait
     self.ready_wait = ready_wait
     self.health_wait = health_wait
+    self.only_new_wait = only_new_wait
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -201,18 +203,26 @@ class RollingDeploy(object):
     else:
       logging.info('ELB healthcheck OK')
       return True
-
-  def confirm_lb_has_only_new_instances(self, wait_time=60):
-    ''' Confirm that only new instances with the current build tag are in the load balancer '''
-    sleep(wait_time) # Allotting time for the instances to shut down
+  
+  def calculate_max_minutes(self, tries, delay):
+    return tries * delay / 60
+  
+  def only_new_instances_check(self):
     instance_ids = self.conn_elb.describe_instance_health(self.load_balancer)
     for instance in instance_ids:
       build = self.conn_ec2.get_all_reservations(instance.instance_id)[0].instances[0].tags['BUILD']
       if build != self.build_number:
-        logging.error("There is still an old instance in the ELB: {0}. Please investigate".format(instance))
-        exit(self.exit_error_code)
+        raise Exception("There is still an old instance in the ELB: {0}.".format(instance))
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, self.load_balancer))
     return instance_ids
+
+  def confirm_lb_has_only_new_instances(self):
+    try:
+      logging.info("Waiting maximum {0} minutes to terminate old instances.".format(self.calculate_max_minutes(self.only_new_wait[0], self.only_new_wait[1])))
+      return retry_call(self.only_new_instances_check, tries=self.only_new_wait[0], delay=self.only_new_wait[1], logger=logging)
+    except Exception as e:
+      logging.error("There are still old instances in the ELB. Please investigate.")
+      exit(self.exit_error_code)
 
   def tag_ami(self, ami_id, env):
     ''' Tagging AMI with DEPLOYED tag '''
@@ -240,7 +250,7 @@ class RollingDeploy(object):
   def launch_new_instances(self, group_name): # pragma: no cover
     # step 1: wait for ec2 creating instances
     try:
-      logging.info("Trying for maximum 10 minutes to allow for instances to be created.")
+      logging.info("Trying for maximum {0} minutes to allow for instances to be created.".format(self.calculate_max_minutes(self.creation_wait[0], self.creation_wait[1])))
       new_instance_ids = retry_call(self.gather_instance_info, fargs=[group_name], tries=self.creation_wait[0], delay=self.creation_wait[1], logger=logging)
     except Exception as e:
       logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.".format(self.build_number))
@@ -249,12 +259,12 @@ class RollingDeploy(object):
       exit(self.exit_error_code)
 
     # step 2: waiting for instances coming up and ready
-    logging.info("Waiting maximum 5 minutes for instances to be ready.")
+    logging.info("Waiting maximum {0} minutes for instances to be ready.".format(self.calculate_max_minutes(self.ready_wait[0], self.ready_wait[1])))
     self.wait_for_new_instances(new_instance_ids, self.ready_wait[0], self.ready_wait[1]) #Wait for new instances to be up and ready
 
     # step 3: waiting for instance health check to be completed
     try:
-      logging.info("Trying for maximum 5 minutes to health-check all instances.")
+      logging.info("Trying for maximum {0} minutes to health-check all instances.".format(self.calculate_max_minutes(self.health_wait[0], self.health_wait[1])))
       retry_call(self.lb_healthcheck, fargs=[new_instance_ids], tries=self.health_wait[0], delay=self.health_wait[1], logger=logging)
     except Exception as e:
       logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
@@ -336,12 +346,13 @@ def get_args(): # pragma: no cover
   parser.add_argument('-C', '--creation-wait', action='store', dest='creation_wait', help='Wait time for ec2 instance creation', type=int, nargs=2, default=[10, 60])
   parser.add_argument('-r', '--ready-wait', action='store', dest='ready_wait', help='Wait time for ec2 instance to be ready', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[10, 30])
+  parser.add_argument('-o', '--only-new-wait', action='store', dest='only_new_wait', help='Wait time for old ec2 instances to terminate', type=int, nargs=2, default=[10, 30])
   return parser.parse_args()
 
 def main(): # pragma: no cover
   args = get_args()
   SetLogging.setup_logging()
-  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, None, args.creation_wait, args.ready_wait, args.health_wait)
+  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, None, args.creation_wait, args.ready_wait, args.health_wait, args.only_new_wait)
   deployObj.deploy()
   
 if __name__ == "__main__": # pragma: no cover

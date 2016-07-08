@@ -22,7 +22,7 @@ Usage
 ```
 usage: rolling_deploy.py [-h] -e ENV -p PROJECT -b BUILD_NUM -a AMI_ID
                          [-P PROFILE] [-c CONFIG] [-s STACK_NAME]
-                         [-C CREATION_WAIT] [-r READY_WAIT] [-H HEALTH_WAIT]
+                         [-C CREATION_WAIT] [-r READY_WAIT] [-H HEALTH_WAIT] [-o ONLY_NEW_WAIT]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -54,6 +54,10 @@ optional arguments:
                         Time to wait for EC2 instances to be health checked
                         (# of tries, interval of each try in seconds), default (10, 30)
                         e.g. -H 10 30
+  -o ONLY_NEW_WAIT, --only-new-wait ONLY_NEW_WAIT
+                        Time to wait for old EC2 instances to terminate
+                        (# of tries, interval of each try in seconds), default (10, 30)
+                        e.g. -o 10 30
 ```
 Requirements
 ==================

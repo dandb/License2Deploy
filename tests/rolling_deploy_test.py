@@ -205,7 +205,7 @@ class RollingDeployTest(unittest.TestCase):
   def test_confirm_lb_has_only_new_instances(self):
     instance_ids = self.setUpEC2()[1]
     self.rolling_deploy.load_balancer = self.rolling_deploy.get_lb()
-    self.assertEqual(len(instance_ids), len(self.rolling_deploy.confirm_lb_has_only_new_instances(1))) #Return All LB's with the proper build number
+    self.assertEqual(len(instance_ids), len(self.rolling_deploy.confirm_lb_has_only_new_instances())) #Return All LB's with the proper build number
 
   @mock_elb
   def test_get_lb(self):
