@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 import unittest
 import boto
@@ -310,12 +310,12 @@ class RollingDeployTest(unittest.TestCase):
          if [y for y in name.tags if y == 'BUILD' and name.tags['BUILD'] == '0']:
            new_inst.append(name.id)
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
-    self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
   @mock_ec2
   def test_get_instance_ids_by_requested_build_tag_failure(self):
     self.setUpEC2()
-    self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag([], 0))
+    self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag([], 0))
 
   @mock_autoscaling
   def test_set_autoscale_instance_desired_count(self):
