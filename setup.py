@@ -9,7 +9,8 @@ install_requires = [
     "boto",
     "PyYaml",
     "argparse",
-    'boto3'
+    'boto3',
+    'retry'
   ]
 
 tests_require = [
@@ -18,7 +19,8 @@ tests_require = [
     "moto",
     "PyYaml",
     'placebo',
-    'boto3'
+    'boto3',
+    'retry'
   ]
 
 def read(fname):
