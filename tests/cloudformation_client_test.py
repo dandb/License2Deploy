@@ -24,3 +24,8 @@ class CloudformationClientTest(unittest.TestCase):
         self.assertTrue(self.rolling_deploy.autoscaling_groups)
         self.assertEquals(asg_name, 'dnbi-backend-qa-servergmsextenderASGqa-QO8UAEHUFJD')
 
+    def test_retrieve_project_cloudwatch_alarms(self):
+        self.assertEquals(self.rolling_deploy.cloudwatch_alarms, False)
+        cloudwatch_alarms = self.rolling_deploy.retrieve_project_cloudwatch_alarms()
+        self.assertEquals(cloudwatch_alarms, ['dnbi-servergmsextender-SCALEDOWNALARMqa-123123', 'dnbi-servergmsextender-SCALEUPALARMqa-4asdhjks'])
+
