@@ -35,6 +35,7 @@ class RollingDeploy(object):
     self.stack_name = stack_name
     self.stack_resources = False
     self.autoscaling_groups = False
+    self.cloudwatch_alarms = False
     self.environments = AWSConn.load_config(self.regions_conf).get(self.env)
     self.region = AWSConn.determine_region(self.environments)
     self.conn_ec2 = AWSConn.aws_conn_ec2(self.region, self.profile_name)
@@ -93,8 +94,14 @@ class RollingDeploy(object):
 
   def get_autoscaling_group_name_from_cloudformation(self):
     if not self.autoscaling_groups:
-      self.autoscaling_groups = [asg for asg in self.get_stack_resources() if asg['ResourceType'] == 'AWS::AutoScaling::AutoScalingGroup']
-    return [asg['PhysicalResourceId'] for asg in self.autoscaling_groups if self.project in asg['PhysicalResourceId']][0]
+      self.autoscaling_groups = self.get_resources_from_stack_of_type('AWS::AutoScaling::AutoScalingGroup')
+    return self.get_resources_physical_ids_by_project(self.autoscaling_groups)[0]
+
+  def get_resources_from_stack_of_type(self, resource_type):
+    return [resource for resource in self.get_stack_resources() if resource['ResourceType'] == resource_type]
+
+  def get_resources_physical_ids_by_project(self, resources):
+    return [resource['PhysicalResourceId'] for resource in resources if self.project in resource['PhysicalResourceId']]
 
   def get_stack_resources(self):
     if not self.stack_resources:
@@ -270,14 +277,21 @@ class RollingDeploy(object):
       logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
       self.revert_deployment()
 
+  def get_cloudwatch_alarms_from_stack(self):
+    if not self.cloudwatch_alarms:
+      self.cloudwatch_alarms = self.get_resources_from_stack_of_type('AWS::CloudWatch::Alarm')
+    return self.get_resources_physical_ids_by_project(self.cloudwatch_alarms)
+
   def retrieve_project_cloudwatch_alarms(self):
     """ Retrieve all the Cloud-Watch alarms for the given project and environment """
     try:
+      if self.stack_name:
+        return self.get_cloudwatch_alarms_from_stack()
       all_cloud_watch_alarms = self.conn_cloudwatch.describe_alarms()
     except Exception as e:
       logging.error("Error while retrieving the list of cloud-watch alarms. Error: {0}".format(e))
       exit(self.exit_error_code)
-    project_cloud_watch_alarms = filter(lambda alarm: self.project in alarm.name and self.env in alarm.name, all_cloud_watch_alarms)
+    project_cloud_watch_alarms = [alarm.name for alarm in all_cloud_watch_alarms if self.project in alarm.name and self.env in alarm.name]
     if len(project_cloud_watch_alarms) == 0:
        logging.info("No cloud-watch alarm found")
     return project_cloud_watch_alarms
@@ -287,8 +301,8 @@ class RollingDeploy(object):
     project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
     for alarm in project_cloud_watch_alarms:
       try:
-        self.conn_cloudwatch.disable_alarm_actions(alarm.name)
-        logging.info("Disabled cloud-watch alarm. {0}".format(alarm.name))
+        self.conn_cloudwatch.disable_alarm_actions(alarm)
+        logging.info("Disabled cloud-watch alarm. {0}".format(alarm))
       except Exception as e:
         logging.error("Unable to disable the cloud-watch alarm, please investigate: {0}".format(e))
         exit(self.exit_error_code)
@@ -297,10 +311,10 @@ class RollingDeploy(object):
     ''' Enable all the cloud watch alarms '''
     project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
     for alarm in project_cloud_watch_alarms:
-      logging.info("Found an alarm. {0}".format(alarm.name))
+      logging.info("Found an alarm. {0}".format(alarm))
       try:
-        self.conn_cloudwatch.enable_alarm_actions(alarm.name)
-        logging.info("Enabled cloud-watch alarm. {0}".format(alarm.name))
+        self.conn_cloudwatch.enable_alarm_actions(alarm)
+        logging.info("Enabled cloud-watch alarm. {0}".format(alarm))
       except Exception as e:
         logging.error("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
         exit(self.exit_error_code)

@@ -133,6 +133,70 @@
                 }, 
                 "ResourceStatus": "UPDATE_COMPLETE", 
                 "LogicalResourceId": "LC2"
+            },
+            {
+                "ResourceType": "AWS::CloudWatch::Alarm",
+                "PhysicalResourceId": "dnbi-servergmsextender-SCALEDOWNALARMqa-123123",
+                "LastUpdatedTimestamp": {
+                    "hour": 16,
+                    "__class__": "datetime",
+                    "month": 4,
+                    "second": 20,
+                    "microsecond": 217000,
+                    "year": 2016,
+                    "day": 6,
+                    "minute": 39
+                },
+                "ResourceStatus": "CREATE_COMPLETE",
+                "LogicalResourceId": "dnbiSCALEDOWNALARMqa"
+            },
+            {
+                "ResourceType": "AWS::CloudWatch::Alarm",
+                "PhysicalResourceId": "dnbi-servergmsextender-SCALEUPALARMqa-4asdhjks",
+                "LastUpdatedTimestamp": {
+                    "hour": 16,
+                    "__class__": "datetime",
+                    "month": 4,
+                    "second": 21,
+                    "microsecond": 108000,
+                    "year": 2016,
+                    "day": 6,
+                    "minute": 39
+                },
+                "ResourceStatus": "CREATE_COMPLETE",
+                "LogicalResourceId": "dnbiSCALEUPALARMqa"
+            },
+            {
+                "ResourceType": "AWS::CloudWatch::Alarm",
+                "PhysicalResourceId": "dnbi-projectbrave-SCALEDOWNALARMqa-asdasd123",
+                "LastUpdatedTimestamp": {
+                    "hour": 16,
+                    "__class__": "datetime",
+                    "month": 4,
+                    "second": 20,
+                    "microsecond": 217000,
+                    "year": 2016,
+                    "day": 6,
+                    "minute": 39
+                },
+                "ResourceStatus": "CREATE_COMPLETE",
+                "LogicalResourceId": "dnbiSCALEDOWNALARMqa"
+            },
+            {
+                "ResourceType": "AWS::CloudWatch::Alarm",
+                "PhysicalResourceId": "dnbi-projectbrave-SCALEUPALARMqa-4asdasdasda",
+                "LastUpdatedTimestamp": {
+                    "hour": 16,
+                    "__class__": "datetime",
+                    "month": 4,
+                    "second": 21,
+                    "microsecond": 108000,
+                    "year": 2016,
+                    "day": 6,
+                    "minute": 39
+                },
+                "ResourceStatus": "CREATE_COMPLETE",
+                "LogicalResourceId": "dnbiSCALEUPALARMqa"
             }
         ]
     }
