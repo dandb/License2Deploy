@@ -20,6 +20,7 @@ class RollingDeploy(object):
                profile_name=None,
                regions_conf=None,
                stack_name=None,
+               force_redeploy=False,
                session=None,
                creation_wait=[10, 60],
                ready_wait=[10, 30],
@@ -33,6 +34,7 @@ class RollingDeploy(object):
     self.profile_name = profile_name
     self.regions_conf = regions_conf
     self.stack_name = stack_name
+    self.force_redeploy = force_redeploy
     self.stack_resources = False
     self.autoscaling_groups = False
     self.cloudwatch_alarms = False
@@ -49,6 +51,7 @@ class RollingDeploy(object):
     self.ready_wait = ready_wait
     self.health_wait = health_wait
     self.only_new_wait = only_new_wait
+    self.existing_instance_ids = []
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -171,6 +174,8 @@ class RollingDeploy(object):
     ''' Gather Instance id's of all instances in the autoscale group '''
     reservations = self.conn_ec2.get_all_reservations(instance_ids=id_list)
     new_instances = []
+    if self.force_redeploy:
+      id_list = [id for id in id_list if id not in self.existing_instance_ids]
     for instance_id in id_list:
       instances_build_tags = [inst for r in reservations for inst in r.instances if 'BUILD' in inst.tags and inst.id == instance_id]
       new_instances += [instance_id for new_id in instances_build_tags if new_id.tags['BUILD'] == str(build)]
@@ -325,6 +330,7 @@ class RollingDeploy(object):
     group_name = self.get_autoscale_group_name()
     self.wait_ami_availability(self.ami_id)
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, group_name))
+    self.existing_instance_ids = list(self.get_all_instance_ids(group_name))
     self.disable_project_cloudwatch_alarms()
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'increase'), group_name)
     self.launch_new_instances(group_name)
@@ -357,6 +363,7 @@ def get_args(): # pragma: no cover
   parser.add_argument('-P', '--profile', default='default', action='store', dest='profile', help='Profile name as designated in aws credentials/config files', type=str)
   parser.add_argument('-c', '--config', default='/opt/License2Deploy/regions.yml', action='store', dest='config', help='Config file Location, eg. /opt/License2Deploy/regions.yml', type=str)
   parser.add_argument('-s', '--stack', action='store', dest='stack_name', help='Stack name if AutoScaling Group created via CloudFormation', type=str)
+  parser.add_argument('-f', '--force-redeploy', action='store', dest='force_redeploy', help='Whether to force redeploy current running build', type=bool, default=False)
   parser.add_argument('-C', '--creation-wait', action='store', dest='creation_wait', help='Wait time for ec2 instance creation', type=int, nargs=2, default=[10, 60])
   parser.add_argument('-r', '--ready-wait', action='store', dest='ready_wait', help='Wait time for ec2 instance to be ready', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[10, 30])
@@ -366,7 +373,7 @@ def get_args(): # pragma: no cover
 def main(): # pragma: no cover
   args = get_args()
   SetLogging.setup_logging()
-  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, None, args.creation_wait, args.ready_wait, args.health_wait, args.only_new_wait)
+  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, args.force_redeploy, None, args.creation_wait, args.ready_wait, args.health_wait, args.only_new_wait)
   deployObj.deploy()
   
 if __name__ == "__main__": # pragma: no cover

@@ -21,7 +21,7 @@ Usage
 ==================
 ```
 usage: rolling_deploy.py [-h] -e ENV -p PROJECT -b BUILD_NUM -a AMI_ID
-                         [-P PROFILE] [-c CONFIG] [-s STACK_NAME]
+                         [-P PROFILE] [-c CONFIG] [-s STACK_NAME] [-f FORCE_REDEPLOY]
                          [-C CREATION_WAIT] [-r READY_WAIT] [-H HEALTH_WAIT] [-o ONLY_NEW_WAIT]
 
 optional arguments:
@@ -42,6 +42,8 @@ optional arguments:
                         /opt/License2Deploy/config.yml
   -s STACK_NAME, --stack STACK_NAME
                         Stack name if AutoScaling Group created via CloudFormation
+  -f FORCE_REDEPLOY, --force-redeploy FORCE_REDEPLOY
+                        Whether to force redeploy current running build, default to false
   -C CREATION_WAIT, --creation-wait CREATION_WAIT
                         Time to wait for EC2 instances to be created
                         (# of tries, interval of each try in seconds), default (10, 60)

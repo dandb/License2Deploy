@@ -312,6 +312,13 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
+    self.rolling_deploy.existing_instance_ids = list(new_inst)
+    self.rolling_deploy.force_redeploy = False
+    self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
+    self.rolling_deploy.force_redeploy = True
+    self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0))
+
+
   @mock_ec2
   def test_get_instance_ids_by_requested_build_tag_failure(self):
     self.setUpEC2()
