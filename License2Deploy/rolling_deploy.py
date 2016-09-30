@@ -52,6 +52,7 @@ class RollingDeploy(object):
     self.health_wait = health_wait
     self.only_new_wait = only_new_wait
     self.existing_instance_ids = []
+    self.new_desired_capacity = None
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -150,10 +151,13 @@ class RollingDeploy(object):
       logging.error("Unable to update desired count, please investigate error: {0}".format(e))
       exit(self.exit_error_code)
 
+  def get_instance_info(self, id_list):
+      return self.conn_ec2.get_all_instances(instance_ids=id_list)
+
   def get_instance_ip_addrs(self, id_list=[]):
     ip_dict = {}
     try:
-      instance_data = [ids for instInfo in self.conn_ec2.get_all_instances(instance_ids=id_list) for ids in instInfo.instances]
+      instance_data = [ids for instInfo in self.get_instance_info(id_list) for ids in instInfo.instances]
       for instance in instance_data:
         ip_dict[instance.id] = instance.private_ip_address
       return ip_dict
@@ -165,27 +169,36 @@ class RollingDeploy(object):
     ''' Gather Instance id's of all instances in the autoscale group '''
     instances = [i for i in self.get_group_info(group_name)[0].instances]
     id_list = [instance_id.instance_id for instance_id in instances]
-    id_ip_dict = self.get_instance_ip_addrs(id_list)
-
-    logging.info("List of all Instance ID's and IP addresses in {0}: {1}".format(group_name, id_ip_dict))
     return id_list
+
+  def log_instances_ips(self, id_list, group_name):
+    id_ip_dict = self.get_instance_ip_addrs(id_list)
+    logging.info("List of all Instance ID's and IP addresses in {0}: {1}".format(group_name, id_ip_dict))
+
+  def get_reservations(self, id_list):
+    return self.conn_ec2.get_all_reservations(instance_ids=id_list)
 
   def get_instance_ids_by_requested_build_tag(self, id_list, build):
     ''' Gather Instance id's of all instances in the autoscale group '''
-    reservations = self.conn_ec2.get_all_reservations(instance_ids=id_list)
-    new_instances = []
+    reservations = self.get_reservations(id_list)
     if self.force_redeploy:
       id_list = [id for id in id_list if id not in self.existing_instance_ids]
-    for instance_id in id_list:
-      instances_build_tags = [inst for r in reservations for inst in r.instances if 'BUILD' in inst.tags and inst.id == instance_id]
-      new_instances += [instance_id for new_id in instances_build_tags if new_id.tags['BUILD'] == str(build)]
+    new_instances = [inst.id
+                     for r in reservations
+                     for inst in r.instances
+                     if inst.id in id_list
+                     and 'BUILD' in inst.tags
+                     and inst.tags['BUILD'] == str(build)]
 
-    if not new_instances:
-      raise Exception('There are no instances in the group with build number {0}'.format(self.build_number))
+    if len(new_instances) < self.get_new_instances_count():
+      raise Exception('Not all new instances with build number "{0}" are in the group'.format(self.build_number))
     else:
       ip_dict = self.get_instance_ip_addrs(new_instances)
       logging.info("New Instance List with IP Addresses: {0}".format(ip_dict))
       return new_instances
+
+  def get_new_instances_count(self):
+      return self.new_desired_capacity / 2
 
   def wait_for_new_instances(self, instance_ids, retry=10, wait_time=30):
     ''' Monitor new instances that come up and wait until they are ready '''
@@ -324,6 +337,20 @@ class RollingDeploy(object):
         logging.error("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
         exit(self.exit_error_code)
 
+  def is_redeploy(self):
+    current_reservations = self.get_reservations(self.existing_instance_ids)
+    current_build_numbers = [instance.tags['BUILD']
+                             for reservation in current_reservations
+                             for instance in reservation.instances
+                             if 'BUILD' in instance.tags]
+    if not current_build_numbers:
+      self.stop_deploy('Failed to determine current build. Ensure instances contain tag "BUILD"')
+    return self.build_number in current_build_numbers
+
+  def stop_deploy(self, message='an error has occurred', e=None, error_code=2):
+    logging.error('{0}: {1}'.format(message, e))
+    exit(error_code)
+
   def deploy(self): # pragma: no cover
     self.load_balancer = self.get_lb()
     ''' Rollin Rollin Rollin, Rawhide! '''
@@ -331,8 +358,12 @@ class RollingDeploy(object):
     self.wait_ami_availability(self.ami_id)
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, group_name))
     self.existing_instance_ids = list(self.get_all_instance_ids(group_name))
+    self.log_instances_ips(self.existing_instance_ids, group_name)
+    if not self.force_redeploy and self.is_redeploy():
+      self.stop_deploy('You are attempting to redeploy the same build. Please pass the force_redeploy flag if a redeploy is desired')
     self.disable_project_cloudwatch_alarms()
-    self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'increase'), group_name)
+    self.new_desired_capacity = self.calculate_autoscale_desired_instance_count(group_name, 'increase')
+    self.set_autoscale_instance_desired_count(self.new_desired_capacity, group_name)
     self.launch_new_instances(group_name)
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
     self.confirm_lb_has_only_new_instances()
