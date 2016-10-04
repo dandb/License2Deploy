@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 import unittest
 import boto
 from boto.ec2.autoscale.launchconfig import LaunchConfiguration
@@ -9,9 +10,11 @@ from moto import mock_autoscaling
 from moto import mock_ec2
 from moto import mock_elb
 from moto.cloudwatch import mock_cloudwatch
+from nose.tools import raises
+
 from License2Deploy.rolling_deploy import RollingDeploy
 from License2Deploy.AWSConn import AWSConn
-import sys
+
 
 class RollingDeployTest(unittest.TestCase):
 
@@ -28,7 +31,7 @@ class RollingDeployTest(unittest.TestCase):
   @mock_ec2
   def setUp(self):
     self.setUpELB()
-    self.rolling_deploy = RollingDeploy('stg', 'server-gms-extender', '0', 'ami-abcd1234', None, './regions.yml')
+    self.rolling_deploy = RollingDeploy('stg', 'server-gms-extender', '0', 'ami-abcd1234', None, './regions.yml', force_redeploy=True)
 
   def get_autoscaling_configurations(self, launch_configuration_name, autoscaling_group_name):
     return {
@@ -75,7 +78,7 @@ class RollingDeployTest(unittest.TestCase):
 
   @mock_ec2
   @mock_elb
-  def setUpEC2(self):
+  def setUpEC2(self, tag=True):
     self.setUpELB()
     conn_elb = boto.connect_elb()
     conn = boto.connect_ec2()
@@ -83,7 +86,8 @@ class RollingDeployTest(unittest.TestCase):
     reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
     instance_ids = reservation.instances
     for instance in instance_ids:
-      instance.add_tag('BUILD', 0)
+      if tag:
+        instance.add_tag('BUILD', 0)
       instance_id_list.append(instance.id)
     elb = conn_elb.get_all_load_balancers(load_balancer_names=['servergmsextenderELBstg'])[0]
     elb.register_instances(instance_id_list)
@@ -283,7 +287,23 @@ class RollingDeployTest(unittest.TestCase):
   def test_get_instance_ip_addrs(self):
     self.setUpEC2()
     self.rolling_deploy.get_instance_ip_addrs(self.setUpEC2()[1])
+    self.rolling_deploy.log_instances_ips(self.setUpEC2()[1], 'group')
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.get_instance_ip_addrs(['blah', 'blarg']))
+
+  @mock_ec2
+  def test_is_redeploy(self):
+    self.setUpEC2()
+    self.assertTrue(self.rolling_deploy.is_redeploy())
+
+  @raises(SystemExit)
+  @mock_ec2
+  def test_is_redeploy_fails(self):
+    self.setUpEC2(tag=False)
+    self.assertRaises(self.rolling_deploy.is_redeploy(), Exception)
+
+  @raises(SystemExit)
+  def test_stop_deploy(self):
+    self.assertRaises(self.rolling_deploy.stop_deploy('error!'), Exception)
 
   @mock_ec2
   @mock_autoscaling
@@ -309,6 +329,8 @@ class RollingDeployTest(unittest.TestCase):
        for name in i_id.instances:
          if [y for y in name.tags if y == 'BUILD' and name.tags['BUILD'] == '0']:
            new_inst.append(name.id)
+    self.rolling_deploy.new_desired_capacity = self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'increase')
+
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
@@ -317,6 +339,23 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.rolling_deploy.force_redeploy = True
     self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0))
+
+  @mock_ec2
+  @mock_autoscaling
+  def test_get_instance_ids_by_requested_build_tag_race_condition(self):
+    self.setUpEC2()
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    conn = boto.connect_ec2()
+    new_inst = []
+    res_ids = conn.get_all_instances()
+    for i_id in res_ids:
+       for name in i_id.instances:
+         if [y for y in name.tags if y == 'BUILD' and name.tags['BUILD'] == '0']:
+           new_inst.append(name.id)
+           break
+    self.rolling_deploy.force_redeploy = True
+    self.rolling_deploy.new_desired_capacity = self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'increase')
+    self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
 
   @mock_ec2
