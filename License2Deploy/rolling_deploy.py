@@ -24,7 +24,7 @@ class RollingDeploy(object):
                session=None,
                creation_wait=[10, 60],
                ready_wait=[10, 30],
-               health_wait=[10, 30],
+               health_wait=[40, 30],
                only_new_wait=[10, 30]):
     self.env = env
     self.session = session
@@ -397,7 +397,7 @@ def get_args(): # pragma: no cover
   parser.add_argument('-f', '--force-redeploy', action='store', dest='force_redeploy', help='Whether to force redeploy current running build', type=bool, default=False)
   parser.add_argument('-C', '--creation-wait', action='store', dest='creation_wait', help='Wait time for ec2 instance creation', type=int, nargs=2, default=[10, 60])
   parser.add_argument('-r', '--ready-wait', action='store', dest='ready_wait', help='Wait time for ec2 instance to be ready', type=int, nargs=2, default=[10, 30])
-  parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[10, 30])
+  parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[40, 30])
   parser.add_argument('-o', '--only-new-wait', action='store', dest='only_new_wait', help='Wait time for old ec2 instances to terminate', type=int, nargs=2, default=[10, 30])
   return parser.parse_args()
 
