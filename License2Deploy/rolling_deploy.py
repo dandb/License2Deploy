@@ -36,7 +36,7 @@ class RollingDeploy(object):
     self.stack_name = stack_name
     self.force_redeploy = force_redeploy
     self.stack_resources = False
-    self.autoscaling_groups = False
+    self.autoscaling_group = False
     self.cloudwatch_alarms = False
     self.environments = AWSConn.load_config(self.regions_conf).get(self.env)
     self.region = AWSConn.determine_region(self.environments)
@@ -97,9 +97,10 @@ class RollingDeploy(object):
     return next((instance.name for instance in filter(lambda n: n.name, self.get_group_info()) if self.project in instance.name and self.env in instance.name), None)
 
   def get_autoscaling_group_name_from_cloudformation(self):
-    if not self.autoscaling_groups:
-      self.autoscaling_groups = self.get_resources_from_stack_of_type('AWS::AutoScaling::AutoScalingGroup')
-    return self.get_resources_physical_ids_by_project(self.autoscaling_groups)[0]
+    if not self.autoscaling_group:
+      asg_logical_name = '{0}ASG{1}'.format(self.project, self.env)
+      self.autoscaling_group = self.cloudformation_client.describe_stack_resource(StackName=self.stack_name, LogicalResourceId=asg_logical_name)['StackResourceDetail']
+    return self.autoscaling_group['PhysicalResourceId']
 
   def get_resources_from_stack_of_type(self, resource_type):
     return [resource for resource in self.get_stack_resources() if resource['ResourceType'] == resource_type]
