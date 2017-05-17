@@ -11,6 +11,7 @@ from retry.api import retry_call
 class RollingDeploy(object):
 
   MAX_RETRIES = 10
+  INSTANCE_NAME = "{0}-{1}{2}-{3}" #e.g. aw1-dnbi-cirrus107-qa
 
   def __init__(self,
                env=None,
@@ -28,6 +29,7 @@ class RollingDeploy(object):
                only_new_wait=[10, 30]):
     self.env = env
     self.session = session
+    self.project_full_name = project
     self.project = project.replace('-','')
     self.build_number = build_number
     self.ami_id = ami_id
@@ -53,6 +55,11 @@ class RollingDeploy(object):
     self.only_new_wait = only_new_wait
     self.existing_instance_ids = []
     self.new_desired_capacity = None
+  
+  def format_instance_name(self, ip):
+    region_short = 'aw1' if self.regions_conf == 'us-west-1' else 'ae1'
+    ip_end = ip.split(".")[-1]
+    return self.INSTANCE_NAME.format(region_short, self.project_full_name, ip_end, self.env)
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -160,7 +167,9 @@ class RollingDeploy(object):
     try:
       instance_data = [ids for instInfo in self.get_instance_info(id_list) for ids in instInfo.instances]
       for instance in instance_data:
-        ip_dict[instance.id] = instance.private_ip_address
+        ip = instance.private_ip_address
+        instance_name = self.format_instance_name(ip)
+        ip_dict[instance.id] = (ip, instance_name)
       return ip_dict
     except Exception as e:
       logging.error("Unable to get IP Addresses for instances: {0}".format(e))

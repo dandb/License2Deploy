@@ -389,6 +389,11 @@ class RollingDeployTest(unittest.TestCase):
 
   def test_decrease_autoscale_instance_count(self):
     self.assertEqual(self.rolling_deploy.decrease_autoscale_instance_count(4), 2)
+  
+  def test_format_instance_name(self):
+    expected_instance_name = "ae1-server-gms-extender50-stg"
+    actual_instance_name = self.rolling_deploy.format_instance_name("10.32.10.50")
+    self.assertEqual(expected_instance_name, actual_instance_name)
 
 def main():
     unittest.main()
