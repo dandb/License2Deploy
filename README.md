@@ -54,8 +54,8 @@ optional arguments:
                         e.g. -r 10 30
   -H HEALTH_WAIT, --health-wait HEALTH_WAIT
                         Time to wait for EC2 instances to be health checked
-                        (# of tries, interval of each try in seconds), default (10, 30)
-                        e.g. -H 10 30
+                        (# of tries, interval of each try in seconds), default (40, 30)
+                        e.g. -H 40 30
   -o ONLY_NEW_WAIT, --only-new-wait ONLY_NEW_WAIT
                         Time to wait for old EC2 instances to terminate
                         (# of tries, interval of each try in seconds), default (10, 30)
