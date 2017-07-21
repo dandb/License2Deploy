@@ -276,7 +276,7 @@ class RollingDeployTest(unittest.TestCase):
     increase = self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'increase')
     decrease = self.rolling_deploy.calculate_autoscale_desired_instance_count(self.GMS_AUTOSCALING_GROUP_STG, 'decrease')
     self.assertEqual(increase, 4)
-    self.assertEqual(decrease, 1)
+    self.assertEqual(decrease, 2)
 
   @mock_autoscaling_deprecated
   def test_calculate_autoscale_desired_instance_count_failure(self):
@@ -383,12 +383,6 @@ class RollingDeployTest(unittest.TestCase):
 
   def test_set_autoscale_instance_desired_count_failure(self):
     self.assertRaises(SystemExit, lambda: self.rolling_deploy.set_autoscale_instance_desired_count(4, self.GMS_AUTOSCALING_GROUP_STG))
-
-  def test_double_autoscale_instance_count(self):
-    self.assertEqual(self.rolling_deploy.double_autoscale_instance_count(2), 4)
-
-  def test_decrease_autoscale_instance_count(self):
-    self.assertEqual(self.rolling_deploy.decrease_autoscale_instance_count(4), 2)
 
 def main():
     unittest.main()

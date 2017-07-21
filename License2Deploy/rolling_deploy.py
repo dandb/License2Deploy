@@ -52,6 +52,7 @@ class RollingDeploy(object):
     self.health_wait = health_wait
     self.only_new_wait = only_new_wait
     self.existing_instance_ids = []
+    self.old_desired_capacity = 2
     self.new_desired_capacity = None
 
   def get_ami_id_state(self, ami_id):
@@ -123,24 +124,19 @@ class RollingDeploy(object):
   def calculate_autoscale_desired_instance_count(self, group_name, desired_state):
     ''' Search via specific autoscale group name to return modified desired instance count '''
     try:
-      cur_count = int(self.get_group_info(group_name)[0].desired_capacity)
       if desired_state == 'increase':
-        new_count = self.double_autoscale_instance_count(cur_count)
+        self.old_desired_capacity = int(self.get_group_info(group_name)[0].desired_capacity)
+        self.new_desired_capacity = self.old_desired_capacity * 2
+        logging.info("Current desired count was changed from {0} to {1}".format(self.old_desired_capacity, self.new_desired_capacity))
       elif desired_state == 'decrease':
-        new_count = self.decrease_autoscale_instance_count(cur_count)
-      logging.info("Current desired count was changed from {0} to {1}".format(cur_count, new_count))
-      return new_count
+        logging.info("Current desired count was changed from {0} to {1}".format(self.new_desired_capacity, self.old_desired_capacity))
+        self.new_desired_capacity = self.old_desired_capacity
+      else:
+        raise Exception("Please make sure the desired_state is set to either increase or decrease")
+      return self.new_desired_capacity
     except Exception as e:
-      logging.error("Please make sure the desired_state is set to either increase or decrease: {0}".format(e))
+      logging.error(e)
       exit(self.exit_error_code)
- 
-  def double_autoscale_instance_count(self, count):
-    ''' Multiply current count by 2 '''
-    return count * 2
-
-  def decrease_autoscale_instance_count(self, count):
-    ''' Divide current count in half '''
-    return count / 2
 
   def set_autoscale_instance_desired_count(self, new_count, group_name):
     ''' Increase desired count by double '''
@@ -191,15 +187,12 @@ class RollingDeploy(object):
                      and 'BUILD' in inst.tags
                      and inst.tags['BUILD'] == str(build)]
 
-    if len(new_instances) < self.get_new_instances_count():
+    if len(new_instances) < self.old_desired_capacity:
       raise Exception('Not all new instances with build number "{0}" are in the group'.format(self.build_number))
     else:
       ip_dict = self.get_instance_ip_addrs(new_instances)
       logging.info("New Instance List with IP Addresses: {0}".format(ip_dict))
       return new_instances
-
-  def get_new_instances_count(self):
-      return self.new_desired_capacity / 2
 
   def wait_for_new_instances(self, instance_ids, retry=10, wait_time=30):
     ''' Monitor new instances that come up and wait until they are ready '''
@@ -363,8 +356,7 @@ class RollingDeploy(object):
     if not self.force_redeploy and self.is_redeploy():
       self.stop_deploy('You are attempting to redeploy the same build. Please pass the force_redeploy flag if a redeploy is desired')
     self.disable_project_cloudwatch_alarms()
-    self.new_desired_capacity = self.calculate_autoscale_desired_instance_count(group_name, 'increase')
-    self.set_autoscale_instance_desired_count(self.new_desired_capacity, group_name)
+    self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'increase'), group_name)
     self.launch_new_instances(group_name)
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
     self.confirm_lb_has_only_new_instances()
