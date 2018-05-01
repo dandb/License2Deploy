@@ -1,12 +1,11 @@
-#!/usr/bin/env python
-
 import logging
 import argparse
 from sys import exit, argv
 from time import sleep, time
-from AWSConn import AWSConn
-from set_logging import SetLogging
+from .AWSConn import AWSConn
+from .set_logging import SetLogging
 from retry.api import retry_call
+
 
 class RollingDeploy(object):
 
@@ -63,7 +62,7 @@ class RollingDeploy(object):
     return ami_obj[0]
 
   def wait_ami_availability(self, ami_id, timer=20):
-    ''' Timeout should be in minutes '''
+    """ Timeout should be in minutes """
     timeout = time() + 60 * timer
     while True:
       ami_state = self.get_ami_id_state(ami_id).state
@@ -91,10 +90,10 @@ class RollingDeploy(object):
       exit(self.exit_error_code)
 
   def get_autoscale_group_name(self):
-    ''' Search for project in autoscale groups and return autoscale group name '''
+    """ Search for project in autoscale groups and return autoscale group name """
     if self.stack_name:
       return self.get_autoscaling_group_name_from_cloudformation()
-    return next((instance.name for instance in filter(lambda n: n.name, self.get_group_info()) if self.project in instance.name and self.env in instance.name), None)
+    return next((instance.name for instance in [n for n in self.get_group_info() if n.name] if self.project in instance.name and self.env in instance.name), None)
 
   def get_autoscaling_group_name_from_cloudformation(self):
     if not self.autoscaling_group:
@@ -121,7 +120,7 @@ class RollingDeploy(object):
       exit(self.exit_error_code)
 
   def calculate_autoscale_desired_instance_count(self, group_name, desired_state):
-    ''' Search via specific autoscale group name to return modified desired instance count '''
+    """ Search via specific autoscale group name to return modified desired instance count """
     try:
       cur_count = int(self.get_group_info(group_name)[0].desired_capacity)
       if desired_state == 'increase':
@@ -133,17 +132,17 @@ class RollingDeploy(object):
     except Exception as e:
       logging.error("Please make sure the desired_state is set to either increase or decrease: {0}".format(e))
       exit(self.exit_error_code)
- 
+
   def double_autoscale_instance_count(self, count):
-    ''' Multiply current count by 2 '''
+    """ Multiply current count by 2 """
     return count * 2
 
   def decrease_autoscale_instance_count(self, count):
-    ''' Divide current count in half '''
+    """ Divide current count in half """
     return count / 2
 
   def set_autoscale_instance_desired_count(self, new_count, group_name):
-    ''' Increase desired count by double '''
+    """ Increase desired count by double """
     try:
       logging.info("Set autoscale capacity for {0} to {1}".format(group_name, new_count))
       self.conn_auto.set_desired_capacity(group_name, new_count)
@@ -167,7 +166,7 @@ class RollingDeploy(object):
       exit(self.exit_error_code)
 
   def get_all_instance_ids(self, group_name):
-    ''' Gather Instance id's of all instances in the autoscale group '''
+    """ Gather Instance id's of all instances in the autoscale group """
     instances = [i for i in self.get_group_info(group_name)[0].instances]
     id_list = [instance_id.instance_id for instance_id in instances]
     return id_list
@@ -180,7 +179,7 @@ class RollingDeploy(object):
     return self.conn_ec2.get_all_reservations(instance_ids=id_list)
 
   def get_instance_ids_by_requested_build_tag(self, id_list, build):
-    ''' Gather Instance id's of all instances in the autoscale group '''
+    """ Gather Instance id's of all instances in the autoscale group """
     reservations = self.get_reservations(id_list)
     if self.force_redeploy:
       id_list = [id for id in id_list if id not in self.existing_instance_ids]
@@ -202,7 +201,7 @@ class RollingDeploy(object):
       return self.new_desired_capacity / 2
 
   def wait_for_new_instances(self, instance_ids, retry=10, wait_time=30):
-    ''' Monitor new instances that come up and wait until they are ready '''
+    """ Monitor new instances that come up and wait until they are ready """
     for instance in instance_ids:
       count = 0
       health = []
@@ -221,18 +220,18 @@ class RollingDeploy(object):
             logging.info("{0} is in a healthy state. Moving on...".format(instance))
 
   def lb_healthcheck(self, new_ids):
-    ''' Confirm that the healthchecks report back OK in the LB. '''
+    """ Confirm that the healthchecks report back OK in the LB. """
     instance_ids = self.conn_elb.describe_instance_health(self.load_balancer, new_ids)
-    status = filter(lambda instance: instance.state != "InService", instance_ids)
+    status = [instance for instance in instance_ids if instance.state != "InService"]
     if status:
       raise Exception('Must check load balancer again. Following instance(s) are not "InService": {0}'.format(status))
     else:
       logging.info('ELB healthcheck OK')
       return True
-  
+
   def calculate_max_minutes(self, tries, delay):
     return tries * delay / 60
-  
+
   def only_new_instances_check(self):
     instance_ids = self.conn_elb.describe_instance_health(self.load_balancer)
     for instance in instance_ids:
@@ -251,10 +250,10 @@ class RollingDeploy(object):
       exit(self.exit_error_code)
 
   def tag_ami(self, ami_id, env):
-    ''' Tagging AMI with DEPLOYED tag '''
+    """ Tagging AMI with DEPLOYED tag """
     try:
       current_tag = self.conn_ec2.get_all_images(image_ids=ami_id)[0].tags.get('deployed')
-      if not current_tag: 
+      if not current_tag:
         logging.info("No DEPLOY tags exist, tagging with {0}".format(env))
         self.conn_ec2.create_tags([self.ami_id], {"deployed": env})
       elif env not in current_tag:
@@ -316,7 +315,7 @@ class RollingDeploy(object):
     return project_cloud_watch_alarms
 
   def disable_project_cloudwatch_alarms(self):
-    ''' Disable all the cloud watch alarms '''
+    """ Disable all the cloud watch alarms """
     project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
     for alarm in project_cloud_watch_alarms:
       try:
@@ -327,7 +326,7 @@ class RollingDeploy(object):
         exit(self.exit_error_code)
 
   def enable_project_cloudwatch_alarms(self):
-    ''' Enable all the cloud watch alarms '''
+    """ Enable all the cloud watch alarms """
     project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
     for alarm in project_cloud_watch_alarms:
       logging.info("Found an alarm. {0}".format(alarm))
@@ -354,7 +353,7 @@ class RollingDeploy(object):
 
   def deploy(self): # pragma: no cover
     self.load_balancer = self.get_lb()
-    ''' Rollin Rollin Rollin, Rawhide! '''
+    """ Rollin Rollin Rollin, Rawhide! """
     group_name = self.get_autoscale_group_name()
     self.wait_ami_availability(self.ami_id)
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, group_name))
@@ -373,7 +372,7 @@ class RollingDeploy(object):
     logging.info("Deployment Complete!")
 
   def revert_deployment(self): #pragma: no cover
-    ''' Will revert back to original instances in autoscale group '''
+    """ Will revert back to original instances in autoscale group """
     logging.error("REVERTING: Removing new instances from autoscale group")
     group_name = self.get_autoscale_group_name()
     new_instance_ids = self.gather_instance_info(group_name)
@@ -385,6 +384,7 @@ class RollingDeploy(object):
         logging.warning('Failed to remove instance: {0}.'.format(instance_id))
     logging.error("REVERT COMPLETE!")
     exit(self.exit_error_code)
+
 
 def get_args(): # pragma: no cover
   parser = argparse.ArgumentParser()
@@ -402,11 +402,13 @@ def get_args(): # pragma: no cover
   parser.add_argument('-o', '--only-new-wait', action='store', dest='only_new_wait', help='Wait time for old ec2 instances to terminate', type=int, nargs=2, default=[10, 30])
   return parser.parse_args()
 
+
 def main(): # pragma: no cover
   args = get_args()
   SetLogging.setup_logging()
   deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, args.force_redeploy, None, args.creation_wait, args.ready_wait, args.health_wait, args.only_new_wait)
   deployObj.deploy()
-  
+
+
 if __name__ == "__main__": # pragma: no cover
     main()

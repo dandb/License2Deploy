@@ -8,7 +8,7 @@ Rolling deploys for AWS AutoScale Groups
 What is License2Deploy?
 ==================
 
-License2Deploy is an automated solution for rolling deployments in AWS written in python. 
+License2Deploy is an automated solution for rolling deployments in AWS written in python.
 
 The rolling deployment will:
  - Double your instances in your autoscale group
@@ -20,7 +20,7 @@ The rolling deployment will:
 Usage
 ==================
 ```
-usage: rolling_deploy.py [-h] -e ENV -p PROJECT -b BUILD_NUM -a AMI_ID
+usage: rolling_deploy [-h] -e ENV -p PROJECT -b BUILD_NUM -a AMI_ID
                          [-P PROFILE] [-c CONFIG] [-s STACK_NAME] [-f FORCE_REDEPLOY]
                          [-C CREATION_WAIT] [-r READY_WAIT] [-H HEALTH_WAIT] [-o ONLY_NEW_WAIT]
 
@@ -72,7 +72,7 @@ There are a few requirements in order for the automated rolling deployments to w
 4. All instances in the autoscale group need to be tagged with a build number
   * This is an important step as when the script runs, it will differentiate the old builds
     from the new builds based off of the build number that is passed in as a command line parameter
-5. The credentials for the user need to be in the ~/.aws/credentials file and if not passed in as a 
+5. The credentials for the user need to be in the ~/.aws/credentials file and if not passed in as a
    command line argument, the script will look at the 'default' profile.
 6. The script needs the AMI ID of the instances that will be built.
   * The reason for the AMI ID is to ensure that if it was just created, it is not in a pending state
@@ -84,8 +84,10 @@ There are a few requirements in order for the automated rolling deployments to w
 Development
 ============
 
-python setup.py install
+To run unit tests:
 
-python setup.py test
+```sh
+$ tox
+```
 
 python License2Deploy/rolling_deploy.py

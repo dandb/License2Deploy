@@ -6,3 +6,8 @@
 *htmlcov
 .DS_Store
 .localized
+*.idea
+.tox
+.pytest_cache
+dist
+.cache
