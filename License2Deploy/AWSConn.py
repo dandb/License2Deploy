@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import boto.ec2 as ec2
 import boto.ec2.autoscale as a
 import boto.ec2.elb as elb
@@ -7,6 +5,7 @@ import boto.ec2.cloudwatch as cloudwatch
 from boto3.session import Session
 import logging
 import yaml
+
 
 class AWSConn(object):
 
@@ -20,7 +19,7 @@ class AWSConn(object):
 
   @staticmethod
   def aws_conn_ec2(region, profile='default'):
-    try: 
+    try:
       conn = ec2.connect_to_region(region, profile_name=profile)
       return conn
     except Exception as e:
@@ -36,7 +35,7 @@ class AWSConn(object):
 
   @staticmethod
   def aws_conn_cloudwatch(region, profile='default'):
-    try: 
+    try:
       conn = cloudwatch.connect_to_region(region, profile_name=profile)
       return conn
     except Exception as e:
@@ -51,7 +50,7 @@ class AWSConn(object):
   @staticmethod
   def load_config(config):
     with open(config, 'r') as stream:
-      return yaml.load(stream)
+      return yaml.safe_load(stream)
 
   @staticmethod
   def determine_region(reg):

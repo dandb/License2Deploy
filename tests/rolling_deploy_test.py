@@ -1,6 +1,5 @@
-#!/usr/bin/env python
-
 import sys
+import pytest
 import unittest
 import boto
 from boto.ec2.autoscale.launchconfig import LaunchConfiguration
@@ -10,7 +9,6 @@ from moto import mock_autoscaling_deprecated
 from moto import mock_ec2_deprecated
 from moto import mock_elb_deprecated
 from moto.cloudwatch import mock_cloudwatch_deprecated
-from nose.tools import raises
 
 from License2Deploy.rolling_deploy import RollingDeploy
 from License2Deploy.AWSConn import AWSConn
@@ -137,7 +135,7 @@ class RollingDeployTest(unittest.TestCase):
     instance_ids = self.setUpEC2()
     self.setUpCloudWatch(instance_ids)
     cloud_watch_alarms = self.rolling_deploy.retrieve_project_cloudwatch_alarms()
-    print cloud_watch_alarms
+    print(cloud_watch_alarms)
     self.assertEqual(1, len(cloud_watch_alarms))
 
   @mock_cloudwatch_deprecated
@@ -214,7 +212,7 @@ class RollingDeployTest(unittest.TestCase):
   @mock_elb_deprecated
   def test_get_lb(self):
     self.setUpELB()
-    self.assertEqual(u'servergmsextenderELBstg', self.rolling_deploy.get_lb()) #Return All LB's with the proper build number
+    self.assertEqual('servergmsextenderELBstg', self.rolling_deploy.get_lb()) #Return All LB's with the proper build number
 
   # assertRaises is a context manager since Python 2.7. Only testing in Python 2.7
   # https://docs.python.org/2.7/library/unittest.html
@@ -295,15 +293,15 @@ class RollingDeployTest(unittest.TestCase):
     self.setUpEC2()
     self.assertTrue(self.rolling_deploy.is_redeploy())
 
-  @raises(SystemExit)
   @mock_ec2_deprecated
   def test_is_redeploy_fails(self):
     self.setUpEC2(tag=False)
-    self.assertRaises(self.rolling_deploy.is_redeploy(), Exception)
+    with pytest.raises(SystemExit):
+      self.rolling_deploy.is_redeploy()
 
-  @raises(SystemExit)
   def test_stop_deploy(self):
-    self.assertRaises(self.rolling_deploy.stop_deploy('error!'), Exception)
+    with pytest.raises(SystemExit):
+      self.rolling_deploy.stop_deploy('error!')
 
   @mock_ec2_deprecated
   @mock_autoscaling_deprecated
@@ -389,9 +387,3 @@ class RollingDeployTest(unittest.TestCase):
 
   def test_decrease_autoscale_instance_count(self):
     self.assertEqual(self.rolling_deploy.decrease_autoscale_instance_count(4), 2)
-
-def main():
-    unittest.main()
-
-if __name__ == "__main__":
-    main()

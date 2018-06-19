@@ -1,17 +1,18 @@
 language: python
 python:
   - "2.7"
-  - "2.6"
+  - "3.6"
 
 install:
-  - python setup.py install
   - pip install coveralls
+  - pip install tox-travis
+  - pip install tox==2.6.0
 
 before_script:
   - export PYTHONPATH=$PYTHONPATH:$PWD
 
 script:
-  - coverage run --source License2Deploy setup.py test
+  - tox
 
 after_success:
-    coveralls
+  - if [ "$TRAVIS_PYTHON_VERSION" == "2.7" ]; then coveralls; fi
