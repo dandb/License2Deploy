@@ -36,7 +36,6 @@ class RollingDeploy(object):
     self.force_redeploy = force_redeploy
     self.stack_resources = False
     self.autoscaling_group = False
-    self.cloudwatch_alarms = False
     self.environments = AWSConn.load_config(self.regions_conf).get(self.env)
     self.region = AWSConn.determine_region(self.environments)
     self.conn_ec2 = AWSConn.aws_conn_ec2(self.region, self.profile_name)
@@ -52,6 +51,7 @@ class RollingDeploy(object):
     self.only_new_wait = only_new_wait
     self.existing_instance_ids = []
     self.new_desired_capacity = None
+    self.sc_proc = ['ReplaceUnhealthy', 'AZRebalance', 'AlarmNotification', 'ScheduledActions']
 
   def get_ami_id_state(self, ami_id):
     try:
@@ -295,47 +295,17 @@ class RollingDeploy(object):
       logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
       self.revert_deployment()
 
-  def get_cloudwatch_alarms_from_stack(self):
-    if not self.cloudwatch_alarms:
-      self.cloudwatch_alarms = self.get_resources_from_stack_of_type('AWS::CloudWatch::Alarm')
-    return self.get_resources_physical_ids_by_project(self.cloudwatch_alarms)
+  def suspend_process(self, group_name):
+    self.conn_auto.suspend_processes(
+      AutoScalingGroupName=group_name,
+      ScalingProcesses=self.sc_proc
+    )
 
-  def retrieve_project_cloudwatch_alarms(self):
-    """ Retrieve all the Cloud-Watch alarms for the given project and environment """
-    try:
-      if self.stack_name:
-        return self.get_cloudwatch_alarms_from_stack()
-      all_cloud_watch_alarms = self.conn_cloudwatch.describe_alarms()
-    except Exception as e:
-      logging.error("Error while retrieving the list of cloud-watch alarms. Error: {0}".format(e))
-      exit(self.exit_error_code)
-    project_cloud_watch_alarms = [alarm.name for alarm in all_cloud_watch_alarms if self.project in alarm.name and self.env in alarm.name]
-    if len(project_cloud_watch_alarms) == 0:
-       logging.info("No cloud-watch alarm found")
-    return project_cloud_watch_alarms
-
-  def disable_project_cloudwatch_alarms(self):
-    """ Disable all the cloud watch alarms """
-    project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
-    for alarm in project_cloud_watch_alarms:
-      try:
-        self.conn_cloudwatch.disable_alarm_actions(alarm)
-        logging.info("Disabled cloud-watch alarm. {0}".format(alarm))
-      except Exception as e:
-        logging.error("Unable to disable the cloud-watch alarm, please investigate: {0}".format(e))
-        exit(self.exit_error_code)
-
-  def enable_project_cloudwatch_alarms(self):
-    """ Enable all the cloud watch alarms """
-    project_cloud_watch_alarms = self.retrieve_project_cloudwatch_alarms()
-    for alarm in project_cloud_watch_alarms:
-      logging.info("Found an alarm. {0}".format(alarm))
-      try:
-        self.conn_cloudwatch.enable_alarm_actions(alarm)
-        logging.info("Enabled cloud-watch alarm. {0}".format(alarm))
-      except Exception as e:
-        logging.error("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
-        exit(self.exit_error_code)
+  def resume_processes(self, group_name):
+    self.conn_auto.resume_processes(
+      AutoScalingGroupName=group_name,
+      ScalingProcesses=self.sc_proc
+    )
 
   def is_redeploy(self):
     current_reservations = self.get_reservations(self.existing_instance_ids)
@@ -361,14 +331,14 @@ class RollingDeploy(object):
     self.log_instances_ips(self.existing_instance_ids, group_name)
     if not self.force_redeploy and self.is_redeploy():
       self.stop_deploy('You are attempting to redeploy the same build. Please pass the force_redeploy flag if a redeploy is desired')
-    self.disable_project_cloudwatch_alarms()
+    self.suspend_process(group_name)
     self.new_desired_capacity = self.calculate_autoscale_desired_instance_count(group_name, 'increase')
     self.set_autoscale_instance_desired_count(self.new_desired_capacity, group_name)
     self.launch_new_instances(group_name)
     self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
     self.confirm_lb_has_only_new_instances()
     self.tag_ami(self.ami_id, self.env)
-    self.enable_project_cloudwatch_alarms()
+    self.resume_processes(group_name)
     logging.info("Deployment Complete!")
 
   def revert_deployment(self): #pragma: no cover
