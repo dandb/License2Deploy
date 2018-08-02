@@ -24,7 +24,8 @@ class RollingDeploy(object):
                creation_wait=[10, 60],
                ready_wait=[10, 30],
                health_wait=[10, 30],
-               only_new_wait=[10, 30]):
+               only_new_wait=[10, 30],
+               asg_logical_name=None):
     self.env = env
     self.session = session
     self.project = project.replace('-','')
@@ -50,6 +51,7 @@ class RollingDeploy(object):
     self.ready_wait = ready_wait
     self.health_wait = health_wait
     self.only_new_wait = only_new_wait
+    self.asg_logical_name = asg_logical_name
     self.existing_instance_ids = []
     self.new_desired_capacity = None
 
@@ -97,8 +99,9 @@ class RollingDeploy(object):
 
   def get_autoscaling_group_name_from_cloudformation(self):
     if not self.autoscaling_group:
-      asg_logical_name = '{0}ASG{1}'.format(self.project, self.env)
-      self.autoscaling_group = self.cloudformation_client.describe_stack_resource(StackName=self.stack_name, LogicalResourceId=asg_logical_name)['StackResourceDetail']
+      if not self.asg_logical_name:
+        self.asg_logical_name = '{0}ASG{1}'.format(self.project, self.env)
+      self.autoscaling_group = self.cloudformation_client.describe_stack_resource(StackName=self.stack_name, LogicalResourceId=self.asg_logical_name)['StackResourceDetail']
     return self.autoscaling_group['PhysicalResourceId']
 
   def get_resources_from_stack_of_type(self, resource_type):
@@ -400,13 +403,16 @@ def get_args(): # pragma: no cover
   parser.add_argument('-r', '--ready-wait', action='store', dest='ready_wait', help='Wait time for ec2 instance to be ready', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-o', '--only-new-wait', action='store', dest='only_new_wait', help='Wait time for old ec2 instances to terminate', type=int, nargs=2, default=[10, 30])
+  parser.add_argument('-A', '--asg-logical-name', action='store', dest='asg_logical_name', help='ASG Logical Name from CFN', type=str)
   return parser.parse_args()
 
 
 def main(): # pragma: no cover
   args = get_args()
   SetLogging.setup_logging()
-  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config, args.stack_name, args.force_redeploy, None, args.creation_wait, args.ready_wait, args.health_wait, args.only_new_wait)
+  deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config,
+                            args.stack_name, args.force_redeploy, None, args.creation_wait, args.ready_wait,
+                            args.health_wait, args.only_new_wait, args.asg_logical_name)
   deployObj.deploy()
 
 
