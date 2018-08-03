@@ -1,2 +1,3 @@
 v0.0.1 First working version
 v0.2.0 python 3 compatibility, add cli entrypoint
+v0.3.0 Updates to pass ASG and ELB names via command line
