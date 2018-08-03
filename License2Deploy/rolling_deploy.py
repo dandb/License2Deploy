@@ -25,7 +25,8 @@ class RollingDeploy(object):
                ready_wait=[10, 30],
                health_wait=[10, 30],
                only_new_wait=[10, 30],
-               asg_logical_name=None):
+               asg_logical_name=None,
+               load_balancer=False):
     self.env = env
     self.session = session
     self.project = project.replace('-','')
@@ -46,12 +47,12 @@ class RollingDeploy(object):
     self.conn_cloudwatch = AWSConn.aws_conn_cloudwatch(self.region, self.profile_name)
     self.cloudformation_client = AWSConn.get_boto3_client('cloudformation', self.region, self.profile_name, session)
     self.exit_error_code = 2
-    self.load_balancer = False
     self.creation_wait = creation_wait
     self.ready_wait = ready_wait
     self.health_wait = health_wait
     self.only_new_wait = only_new_wait
     self.asg_logical_name = asg_logical_name
+    self.load_balancer = load_balancer
     self.existing_instance_ids = []
     self.new_desired_capacity = None
 
@@ -114,13 +115,6 @@ class RollingDeploy(object):
     if not self.stack_resources:
       self.stack_resources = self.cloudformation_client.list_stack_resources(StackName=self.stack_name)['StackResourceSummaries']
     return self.stack_resources
-
-  def get_lb(self):
-    try:
-      return next(n.name for n in self.conn_elb.get_all_load_balancers() if self.project in str(n.name) and self.env in str(n.name))
-    except Exception as e:
-      logging.error("Unable to pull down ELB info: {0}".format(e))
-      exit(self.exit_error_code)
 
   def calculate_autoscale_desired_instance_count(self, group_name, desired_state):
     """ Search via specific autoscale group name to return modified desired instance count """
@@ -355,7 +349,6 @@ class RollingDeploy(object):
     exit(error_code)
 
   def deploy(self): # pragma: no cover
-    self.load_balancer = self.get_lb()
     """ Rollin Rollin Rollin, Rawhide! """
     group_name = self.get_autoscale_group_name()
     self.wait_ami_availability(self.ami_id)
@@ -404,6 +397,7 @@ def get_args(): # pragma: no cover
   parser.add_argument('-H', '--health-wait', action='store', dest='health_wait', help='Wait time for ec2 instance health check', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-o', '--only-new-wait', action='store', dest='only_new_wait', help='Wait time for old ec2 instances to terminate', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-A', '--asg-logical-name', action='store', dest='asg_logical_name', help='ASG Logical Name from CFN', type=str)
+  parser.add_argument('-L', '--load_balancer', action='store', dest='load_balancer', help='LoadBalancerName', type=str)
   return parser.parse_args()
 
 
@@ -412,7 +406,7 @@ def main(): # pragma: no cover
   SetLogging.setup_logging()
   deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config,
                             args.stack_name, args.force_redeploy, None, args.creation_wait, args.ready_wait,
-                            args.health_wait, args.only_new_wait, args.asg_logical_name)
+                            args.health_wait, args.only_new_wait, args.asg_logical_name, args.load_balancer)
   deployObj.deploy()
 
 
