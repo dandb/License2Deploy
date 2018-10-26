@@ -60,6 +60,10 @@ optional arguments:
                         Time to wait for old EC2 instances to terminate
                         (# of tries, interval of each try in seconds), default (10, 30)
                         e.g. -o 10 30
+  -A ASG_LOGICAL_NAME, --asg-logical-name ASG_LOGICAL_NAME
+                        ASG Logical Name from CFN
+  -L LOAD_BALANCER, --load_balancer LOAD_BALANCER
+                        LoadBalancerName
 ```
 Requirements
 ==================
