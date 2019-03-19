@@ -53,7 +53,7 @@ class RollingDeploy(object):
     self.only_new_wait = only_new_wait
     self.asg_logical_name = asg_logical_name
     self.load_balancer = load_balancer
-    self.existing_instance_ids = []
+    self.original_instance_ids = []
     self.new_desired_capacity = None
 
   def get_ami_id_state(self, ami_id):
@@ -179,7 +179,7 @@ class RollingDeploy(object):
     """ Gather Instance id's of all instances in the autoscale group """
     reservations = self.get_reservations(id_list)
     if self.force_redeploy:
-      id_list = [id for id in id_list if id not in self.existing_instance_ids]
+      id_list = [id for id in id_list if id not in self.original_instance_ids]
     new_instances = [inst.id
                      for r in reservations
                      for inst in r.instances
@@ -292,6 +292,17 @@ class RollingDeploy(object):
       logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
       self.revert_deployment()
 
+  def terminate_original_instances(self, group_name): #pragma: no cover
+    """ Will remove original instances in autoscale group """
+    logging.info("Removing old instances from autoscale group")
+    for instance_id in self.original_instance_ids:
+      try:
+        self.conn_auto.terminate_instance(instance_id, decrement_capacity=True)
+        logging.info("Removed {0} from autoscale group".format(instance_id))
+      except Exception as e:
+        logging.warning('Failed to remove instance: {0}. Please Investigate: {1}'.format(instance_id, e))
+    logging.info("TERMINATION OF OLD INSTANCES COMPLETE!")
+
   def get_cloudwatch_alarms_from_stack(self):
     if not self.cloudwatch_alarms:
       self.cloudwatch_alarms = self.get_resources_from_stack_of_type('AWS::CloudWatch::Alarm')
@@ -335,7 +346,7 @@ class RollingDeploy(object):
         exit(self.exit_error_code)
 
   def is_redeploy(self):
-    current_reservations = self.get_reservations(self.existing_instance_ids)
+    current_reservations = self.get_reservations(self.original_instance_ids)
     current_build_numbers = [instance.tags['BUILD']
                              for reservation in current_reservations
                              for instance in reservation.instances
@@ -353,15 +364,16 @@ class RollingDeploy(object):
     group_name = self.get_autoscale_group_name()
     self.wait_ami_availability(self.ami_id)
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, group_name))
-    self.existing_instance_ids = list(self.get_all_instance_ids(group_name))
-    self.log_instances_ips(self.existing_instance_ids, group_name)
+    self.original_instance_ids = list(self.get_all_instance_ids(group_name))
+    self.log_instances_ips(self.original_instance_ids, group_name)
     if not self.force_redeploy and self.is_redeploy():
       self.stop_deploy('You are attempting to redeploy the same build. Please pass the force_redeploy flag if a redeploy is desired')
     self.disable_project_cloudwatch_alarms()
     self.new_desired_capacity = self.calculate_autoscale_desired_instance_count(group_name, 'increase')
     self.set_autoscale_instance_desired_count(self.new_desired_capacity, group_name)
     self.launch_new_instances(group_name)
-    self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
+    self.terminate_original_instances(group_name)
+    self.set_autoscale_instance_desired_count(len(self.original_instance_ids), group_name)
     self.confirm_lb_has_only_new_instances()
     self.tag_ami(self.ami_id, self.env)
     self.enable_project_cloudwatch_alarms()
