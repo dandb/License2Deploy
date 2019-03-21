@@ -23,7 +23,8 @@ setup(
     },
     include_package_data=True,
     install_requires=[
-        'boto==2.48.0',
+        'botocore==1.12.119',
+        'boto==2.49.0',
         'boto3==1.7.37',
         'PyYAML==3.12',
         'retry==0.9.2'
