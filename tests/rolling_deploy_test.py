@@ -214,6 +214,7 @@ class RollingDeployTest(unittest.TestCase):
   @mock_elb_deprecated
   def test_lb_healthcheck(self):
     instance_ids = self.setUpEC2()[1]
+    self.rolling_deploy.load_balancer = self.load_balancer_name
     self.assertTrue(self.rolling_deploy.lb_healthcheck(instance_ids)) #Return InService for all instances in ELB
     # Below doesn't work as I am unable to change the instance state. Need to modify elb_healthcheck method and also modify instance_health template.
     ## https://github.com/spulec/moto/blob/master/moto/elb/responses.py#L511 ##
@@ -317,7 +318,7 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
-    self.rolling_deploy.existing_instance_ids = list(new_inst)
+    self.rolling_deploy.original_instance_ids = list(new_inst)
     self.rolling_deploy.force_redeploy = False
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.rolling_deploy.force_redeploy = True
