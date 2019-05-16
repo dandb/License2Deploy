@@ -303,6 +303,24 @@ class RollingDeployTest(unittest.TestCase):
 
   @mock_ec2_deprecated
   @mock_autoscaling_deprecated
+  @mock_elb_deprecated
+  def test_validate_instance_list(self):
+    self.setUpELB()
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    conn = boto.connect_ec2()
+    reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
+    instances = reservation.instances
+    self.assertTrue(self.rolling_deploy.validate_instance_list(instances))
+
+  @mock_ec2_deprecated
+  @mock_autoscaling_deprecated
+  @mock_elb_deprecated
+  def test_failure_validate_instance_list(self):
+    instances = []
+    self.assertRaises(Exception, lambda: self.rolling_deploy.validate_instance_list(instances))
+
+  @mock_ec2_deprecated
+  @mock_autoscaling_deprecated
   def test_get_instance_ids_by_requested_build_tag(self):
     self.setUpEC2()
     self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
