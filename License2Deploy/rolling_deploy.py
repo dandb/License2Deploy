@@ -162,9 +162,15 @@ class RollingDeploy(object):
       logging.error("Unable to get IP Addresses for instances: {0}".format(e))
       exit(self.exit_error_code)
 
+  def validate_instance_list(self, instances):
+      if len(instances) == 0:
+          raise Exception("There are no instances in this AutoScalingGroup, please check AutoScalingGroup desired capacity.")
+      return True
+
   def get_all_instance_ids(self, group_name):
     """ Gather Instance id's of all instances in the autoscale group """
     instances = [i for i in self.get_group_info(group_name)[0].instances]
+    self.validate_instance_list(instances)
     id_list = [instance_id.instance_id for instance_id in instances]
     return id_list
 
