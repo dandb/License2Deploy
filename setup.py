@@ -8,7 +8,7 @@ def read(fname):
 
 setup(
     name="License2Deploy",
-    version="0.3.3",
+    version="0.3.4",
     author="Dun and Bradstreet",
     author_email="license2deploy@dandb.com",
     description="Rolling deploys by changing desired amount of instances AWS EC2 Autoscale Group",
@@ -27,7 +27,8 @@ setup(
         'boto==2.49.0',
         'boto3==1.9.123',
         'PyYAML==5.1',
-        'retry==0.9.2'
+        'retry==0.9.2',
+        'decorator==4.4.2'
     ],
     extras_require={'test': [
         'coverage',
