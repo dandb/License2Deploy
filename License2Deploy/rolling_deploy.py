@@ -47,6 +47,8 @@ class RollingDeploy(object):
     self.asg = AWSConn.get_boto3_client('autoscaling', self.region, self.profile_name, session)
     self.asg_info = None
     self.asg_name = ''
+    self.ec2 = AWSConn.get_boto3_client('ec2', self.region, self.profile_name, session)
+    self.elb2 = AWSConn.get_boto3_client('elbv2', self.region, self.profile_name, session)
     self.conn_auto = AWSConn.aws_conn_auto(self.region, self.profile_name)
     self.conn_cloudwatch = AWSConn.aws_conn_cloudwatch(self.region, self.profile_name)
     self.cloudformation_client = AWSConn.get_boto3_client('cloudformation', self.region, self.profile_name, session)
@@ -57,6 +59,7 @@ class RollingDeploy(object):
     self.only_new_wait = only_new_wait
     self.asg_logical_name = asg_logical_name
     self.load_balancer = load_balancer
+    self.target_group_arn = None
     self.original_instance_ids = []
     self.new_desired_capacity = None
 
@@ -240,6 +243,22 @@ class RollingDeploy(object):
       logging.info('ELB healthcheck OK')
       return True
 
+  def target_group_healthcheck(self, new_ids):
+    targets = [{'Id': i} for i in new_ids]
+    health = self.elb2.describe_target_health(TargetGroupArn=self.target_group_arn, Targets=targets)
+    unhealthy = [d['Target']['Id'] for d in health['TargetHealthDescriptions'] if
+               d['TargetHealth']['State'] != 'healthy']
+    if unhealthy:
+      raise Exception(
+        'Must check load balancer 2 again. Following instance(s) are not "InService": {0}'.format(unhealthy))
+    logging.info('ELB2 healthcheck OK')
+
+  def elbs_healthcheck(self, new_ids):
+      if self.load_balancer:
+        self.lb_healthcheck(new_ids)
+      if self.target_group_arn:
+        self.target_group_healthcheck(new_ids)
+
   def calculate_max_minutes(self, tries, delay):
     return tries * delay / 60
 
@@ -252,10 +271,26 @@ class RollingDeploy(object):
     logging.info("Deployed instances {0} to ELB: {1}".format(instance_ids, self.load_balancer))
     return instance_ids
 
+  def only_new_instances_target_group_check(self):
+    health = self.elb2.describe_target_health(TargetGroupArn=self.target_group_arn)
+    instance_ids = [d['Target']['Id'] for d in health['TargetHealthDescriptions']]
+    for instance_id in instance_ids:
+      build = self.conn_ec2.get_all_reservations(instance_id)[0].instances[0].tags['BUILD']
+      if build != self.build_number:
+        raise Exception("There is still an old instance in the TargetGroup: {0}.".format(instance))
+      logging.info("Deployed instances {0} to TargetGroup".format(instance_ids))
+    return instance_ids
+
+  def only_new_instances_elbs_check(self):
+      if self.load_balancer:
+        self.only_new_instances_check()
+      if self.target_group_arn:
+        self.only_new_instances_target_group_check()
+
   def confirm_lb_has_only_new_instances(self):
     try:
       logging.info("Waiting maximum {0} minutes to terminate old instances.".format(self.calculate_max_minutes(self.only_new_wait[0], self.only_new_wait[1])))
-      return retry_call(self.only_new_instances_check, tries=self.only_new_wait[0], delay=self.only_new_wait[1], logger=logging)
+      return retry_call(self.only_new_instances_elbs_check, tries=self.only_new_wait[0], delay=self.only_new_wait[1], logger=logging)
     except Exception as e:
       logging.error("There are still old instances in the ELB. Please investigate.")
       exit(self.exit_error_code)
@@ -300,7 +335,7 @@ class RollingDeploy(object):
     # step 3: waiting for instance health check to be completed
     try:
       logging.info("Trying for maximum {0} minutes to health-check all instances.".format(self.calculate_max_minutes(self.health_wait[0], self.health_wait[1])))
-      retry_call(self.lb_healthcheck, fargs=[new_instance_ids], tries=self.health_wait[0], delay=self.health_wait[1], logger=logging)
+      retry_call(self.elbs_healthcheck, fargs=[new_instance_ids], tries=self.health_wait[0], delay=self.health_wait[1], logger=logging)
     except Exception as e:
       logging.error('Load balancer healthcheck has exceeded the timeout threshold. Rolling back.')
       self.revert_deployment()
@@ -358,6 +393,10 @@ class RollingDeploy(object):
         logging.error("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
         exit(self.exit_error_code)
 
+  def get_target_group(self, asg_group):
+    target_groups = self.asg.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_group])['AutoScalingGroups'][0]['TargetGroupARNs']
+    return target_groups[0] if target_groups else False
+
   def is_redeploy(self):
     current_reservations = self.get_reservations(self.original_instance_ids)
     current_build_numbers = [instance.tags['BUILD']
@@ -375,6 +414,7 @@ class RollingDeploy(object):
   def deploy(self): # pragma: no cover
     """ Rollin Rollin Rollin, Rawhide! """
     self.get_asg_info()
+    self.target_group_arn = self.get_target_group(self.asg_name)
     self.wait_ami_availability(self.ami_id)
     logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, self.asg_name))
     self.original_instance_ids = list(self.get_all_instance_ids(self.asg_name))
