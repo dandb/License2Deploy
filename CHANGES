@@ -3,3 +3,4 @@ v0.2.0 python 3 compatibility, add cli entrypoint
 v0.3.0 Updates to pass ASG and ELB names via command line
 v0.3.2 Pins packages needed by Travis CI
 v0.3.4 Pins decorator (transitive dependency)
+v0.3.5 Added support for ASGs those have Target Group connected
