@@ -1,5 +1,6 @@
 import logging
 import argparse
+import boto3
 from sys import exit, argv
 from time import sleep, time
 from .AWSConn import AWSConn
@@ -43,6 +44,9 @@ class RollingDeploy(object):
     self.region = AWSConn.determine_region(self.environments)
     self.conn_ec2 = AWSConn.aws_conn_ec2(self.region, self.profile_name)
     self.conn_elb = AWSConn.aws_conn_elb(self.region, self.profile_name)
+    self.asg = AWSConn.get_boto3_client('autoscaling', self.region, self.profile_name, session)
+    self.asg_info = None
+    self.asg_name = ''
     self.conn_auto = AWSConn.aws_conn_auto(self.region, self.profile_name)
     self.conn_cloudwatch = AWSConn.aws_conn_cloudwatch(self.region, self.profile_name)
     self.cloudformation_client = AWSConn.get_boto3_client('cloudformation', self.region, self.profile_name, session)
@@ -92,11 +96,12 @@ class RollingDeploy(object):
       logging.error("Unable to pull down autoscale group: {0}".format(e))
       exit(self.exit_error_code)
 
-  def get_autoscale_group_name(self):
-    """ Search for project in autoscale groups and return autoscale group name """
+  def get_asg_info(self):
     if self.stack_name:
-      return self.get_autoscaling_group_name_from_cloudformation()
-    return next((instance.name for instance in [n for n in self.get_group_info() if n.name] if self.project in instance.name and self.env in instance.name), None)
+      self.asg_name = self.get_autoscaling_group_name_from_cloudformation()
+    else:
+        self.asg_name = next((instance.name for instance in [n for n in self.get_group_info() if n.name] if self.project in instance.name and self.env in instance.name), None)
+    self.asg_info = self.asg.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
 
   def get_autoscaling_group_name_from_cloudformation(self):
     if not self.autoscaling_group:
@@ -119,7 +124,7 @@ class RollingDeploy(object):
   def calculate_autoscale_desired_instance_count(self, group_name, desired_state):
     """ Search via specific autoscale group name to return modified desired instance count """
     try:
-      cur_count = int(self.get_group_info(group_name)[0].desired_capacity)
+      cur_count = int(self.asg_info['AutoScalingGroups'][0]['DesiredCapacity'])
       if desired_state == 'increase':
         new_count = self.double_autoscale_instance_count(cur_count)
       elif desired_state == 'decrease':
@@ -142,7 +147,10 @@ class RollingDeploy(object):
     """ Increase desired count by double """
     try:
       logging.info("Set autoscale capacity for {0} to {1}".format(group_name, new_count))
-      self.conn_auto.set_desired_capacity(group_name, new_count)
+      self.asg.set_desired_capacity(
+          AutoScalingGroupName=group_name,
+          DesiredCapacity=new_count
+      )
       return True
     except Exception as e:
       logging.error("Unable to update desired count, please investigate error: {0}".format(e))
@@ -282,8 +290,7 @@ class RollingDeploy(object):
       new_instance_ids = retry_call(self.gather_instance_info, fargs=[group_name], tries=self.creation_wait[0], delay=self.creation_wait[1], logger=logging)
     except Exception as e:
       logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.".format(self.build_number))
-      group_name = self.get_autoscale_group_name()
-      self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(group_name, 'decrease'), group_name)
+      self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(self.asg_name, 'decrease'), self.asg_name)
       exit(self.exit_error_code)
 
     # step 2: waiting for instances coming up and ready
@@ -367,19 +374,19 @@ class RollingDeploy(object):
 
   def deploy(self): # pragma: no cover
     """ Rollin Rollin Rollin, Rawhide! """
-    group_name = self.get_autoscale_group_name()
+    self.get_asg_info()
     self.wait_ami_availability(self.ami_id)
-    logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, group_name))
-    self.original_instance_ids = list(self.get_all_instance_ids(group_name))
-    self.log_instances_ips(self.original_instance_ids, group_name)
+    logging.info("Build #: {0} ::: Autoscale Group: {1}".format(self.build_number, self.asg_name))
+    self.original_instance_ids = list(self.get_all_instance_ids(self.asg_name))
+    self.log_instances_ips(self.original_instance_ids, self.asg_name)
     if not self.force_redeploy and self.is_redeploy():
       self.stop_deploy('You are attempting to redeploy the same build. Please pass the force_redeploy flag if a redeploy is desired')
     self.disable_project_cloudwatch_alarms()
-    self.new_desired_capacity = self.calculate_autoscale_desired_instance_count(group_name, 'increase')
-    self.set_autoscale_instance_desired_count(self.new_desired_capacity, group_name)
-    self.launch_new_instances(group_name)
-    self.terminate_original_instances(group_name)
-    self.set_autoscale_instance_desired_count(len(self.original_instance_ids), group_name)
+    self.new_desired_capacity = self.calculate_autoscale_desired_instance_count(self.asg_name, 'increase')
+    self.set_autoscale_instance_desired_count(self.new_desired_capacity, self.asg_name)
+    self.launch_new_instances(self.asg_name)
+    self.terminate_original_instances(self.asg_name)
+    self.set_autoscale_instance_desired_count(len(self.original_instance_ids), self.asg_name)
     self.confirm_lb_has_only_new_instances()
     self.tag_ami(self.ami_id, self.env)
     self.enable_project_cloudwatch_alarms()
@@ -388,8 +395,7 @@ class RollingDeploy(object):
   def revert_deployment(self): #pragma: no cover
     """ Will revert back to original instances in autoscale group """
     logging.error("REVERTING: Removing new instances from autoscale group")
-    group_name = self.get_autoscale_group_name()
-    new_instance_ids = self.gather_instance_info(group_name)
+    new_instance_ids = self.gather_instance_info(self.asg_name)
     for instance_id in new_instance_ids:
       try:
         self.conn_auto.terminate_instance(instance_id, decrement_capacity=True)
