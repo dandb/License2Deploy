@@ -8,7 +8,7 @@ def read(fname):
 
 setup(
     name="License2Deploy",
-    version="0.3.5",
+    version="0.3.6",
     author="Dun and Bradstreet",
     author_email="license2deploy@dandb.com",
     description="Rolling deploys by changing desired amount of instances AWS EC2 Autoscale Group",
