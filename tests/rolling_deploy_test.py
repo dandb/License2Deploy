@@ -18,6 +18,7 @@ class RollingDeployTest(unittest.TestCase):
 
   autoscaling_group_name = 'autoscaling_group_name'
   launch_configuration_name = 'launch_configuration_name'
+  load_balancer_name = 'load_balancer_name'
 
   GMS_LAUNCH_CONFIGURATION_STG = 'server-backend-stg-servergmsextenderLCstg-46TIE5ZFQTLB'
   GMS_LAUNCH_CONFIGURATION_PRD = 'server-backend-prd-servergmsextenderLCprd-46TIE5ZFQTLB'
@@ -46,7 +47,7 @@ class RollingDeployTest(unittest.TestCase):
         image_id='ami-abcd1234',
         instance_type='m1.medium',
       )
-      load_balancer_name = 'servergmsextenderELB{0}'.format(env)
+      load_balancer_name = self.load_balancer_name
       group = AutoScalingGroup(
         name=configuration[self.autoscaling_group_name],
         availability_zones=['us-east-1a'],
@@ -69,7 +70,7 @@ class RollingDeployTest(unittest.TestCase):
     conn_elb = boto.connect_elb()
     zones = ['us-east-1a']
     ports = [(80, 8080, 'http')]
-    load_balancer_name = 'servergmsextenderELB{0}'.format(env)
+    load_balancer_name = self.load_balancer_name
     conn_elb.create_load_balancer(load_balancer_name, zones, ports)
     balancers = conn_elb.get_all_load_balancers(load_balancer_names=[load_balancer_name])
     self.assertEqual(balancers[0].name, load_balancer_name)
@@ -87,7 +88,7 @@ class RollingDeployTest(unittest.TestCase):
       if tag:
         instance.add_tag('BUILD', 0)
       instance_id_list.append(instance.id)
-    elb = conn_elb.get_all_load_balancers(load_balancer_names=['servergmsextenderELBstg'])[0]
+    elb = conn_elb.get_all_load_balancers(load_balancer_names=[self.load_balancer_name])[0]
     elb.register_instances(instance_id_list)
     elb_ids = [instance.id for instance in elb.instances]
     self.assertEqual(instance_id_list.sort(), elb_ids.sort())
@@ -172,29 +173,14 @@ class RollingDeployTest(unittest.TestCase):
   @mock_elb_deprecated
   def test_confirm_lb_has_only_new_instances(self):
     instance_ids = self.setUpEC2()[1]
-    self.rolling_deploy.load_balancer = self.rolling_deploy.get_lb()
+    self.rolling_deploy.load_balancer = self.load_balancer_name
     self.assertEqual(len(instance_ids), len(self.rolling_deploy.confirm_lb_has_only_new_instances())) #Return All LB's with the proper build number
-
-  @mock_elb_deprecated
-  def test_get_lb(self):
-    self.setUpELB()
-    self.assertEqual('servergmsextenderELBstg', self.rolling_deploy.get_lb()) #Return All LB's with the proper build number
-
-  # assertRaises is a context manager since Python 2.7. Only testing in Python 2.7
-  # https://docs.python.org/2.7/library/unittest.html
-  @mock_elb_deprecated
-  def test_get_lb_failure(self):
-    if sys.version_info >= (2, 7):
-      self.setUpELB()
-      with self.assertRaises(SystemExit) as rolling_deploy:
-        bad_rolling_deploy = RollingDeploy('stg', 'fake-gms-extender', '0', 'bad', None, './regions.yml')
-        bad_rolling_deploy.load_balancer = bad_rolling_deploy.get_lb()
-      self.assertEqual(2, rolling_deploy.exception.code)
 
   @mock_ec2_deprecated
   @mock_elb_deprecated
   def test_lb_healthcheck(self):
     instance_ids = self.setUpEC2()[1]
+    self.rolling_deploy.load_balancer = self.load_balancer_name
     self.assertTrue(self.rolling_deploy.lb_healthcheck(instance_ids)) #Return InService for all instances in ELB
     # Below doesn't work as I am unable to change the instance state. Need to modify elb_healthcheck method and also modify instance_health template.
     ## https://github.com/spulec/moto/blob/master/moto/elb/responses.py#L511 ##
@@ -283,6 +269,24 @@ class RollingDeployTest(unittest.TestCase):
 
   @mock_ec2_deprecated
   @mock_autoscaling_deprecated
+  @mock_elb_deprecated
+  def test_validate_instance_list(self):
+    self.setUpELB()
+    self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
+    conn = boto.connect_ec2()
+    reservation = conn.run_instances('ami-1234abcd', min_count=2, private_ip_address="10.10.10.10")
+    instances = reservation.instances
+    self.assertTrue(self.rolling_deploy.validate_instance_list(instances))
+
+  @mock_ec2_deprecated
+  @mock_autoscaling_deprecated
+  @mock_elb_deprecated
+  def test_failure_validate_instance_list(self):
+    instances = []
+    self.assertRaises(Exception, lambda: self.rolling_deploy.validate_instance_list(instances))
+
+  @mock_ec2_deprecated
+  @mock_autoscaling_deprecated
   def test_get_instance_ids_by_requested_build_tag(self):
     self.setUpEC2()
     self.setUpAutoScaleGroup([self.get_autoscaling_configurations(self.GMS_LAUNCH_CONFIGURATION_STG, self.GMS_AUTOSCALING_GROUP_STG)])
@@ -298,7 +302,7 @@ class RollingDeployTest(unittest.TestCase):
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.assertRaises(Exception, lambda: self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 1))
 
-    self.rolling_deploy.existing_instance_ids = list(new_inst)
+    self.rolling_deploy.original_instance_ids = list(new_inst)
     self.rolling_deploy.force_redeploy = False
     self.assertEqual(len(self.rolling_deploy.get_instance_ids_by_requested_build_tag(new_inst, 0)), 2)
     self.rolling_deploy.force_redeploy = True
