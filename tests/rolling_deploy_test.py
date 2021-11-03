@@ -131,40 +131,6 @@ class RollingDeployTest(unittest.TestCase):
     watch_conn = boto.connect_cloudwatch()
     watch_conn.put_metric_alarm(alarm)
 
-  @mock_cloudwatch_deprecated
-  def test_retrieve_project_cloudwatch_alarms(self):
-    instance_ids = self.setUpEC2()
-    self.setUpCloudWatch(instance_ids)
-    cloud_watch_alarms = self.rolling_deploy.retrieve_project_cloudwatch_alarms()
-    print(cloud_watch_alarms)
-    self.assertEqual(1, len(cloud_watch_alarms))
-
-  @mock_cloudwatch_deprecated
-  def test_retrieve_project_cloudwatch_alarms_with_no_valid_alarms(self):
-    instance_ids = self.setUpEC2()
-    self.setUpCloudWatch(instance_ids)
-    self.rolling_deploy.env = "wrong_env_prd" # set a wrong environment
-    cloud_watch_alarms = self.rolling_deploy.retrieve_project_cloudwatch_alarms()
-    self.assertEqual(0, len(cloud_watch_alarms))
-
-  @mock_cloudwatch_deprecated
-  def test_retrieve_project_cloudwatch_alarms_with_wrong_config(self):
-    instance_ids = self.setUpEC2()
-    self.setUpCloudWatchWithWrongConfig(instance_ids)
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.retrieve_project_cloudwatch_alarms())
-
-  @mock_cloudwatch_deprecated
-  def test_enable_project_cloudwatch_alarms_Error(self):
-    instance_ids = self.setUpEC2()
-    self.setUpCloudWatch(instance_ids)
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.enable_project_cloudwatch_alarms())
-
-  @mock_cloudwatch_deprecated
-  def test_disable_project_cloudwatch_alarms_Error(self):
-    instance_ids = self.setUpEC2()
-    self.setUpCloudWatch(instance_ids)
-    self.assertRaises(SystemExit, lambda: self.rolling_deploy.disable_project_cloudwatch_alarms())
-
   @mock_ec2_deprecated
   def test_tag_ami(self):
     conn = self.setUpEC2()[0]
