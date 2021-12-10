@@ -1,6 +1,7 @@
 import logging
 import argparse
 import boto3
+import signal
 from sys import exit, argv
 from time import sleep, time
 from .AWSConn import AWSConn
@@ -52,7 +53,6 @@ class RollingDeploy(object):
     self.conn_auto = AWSConn.aws_conn_auto(self.region, self.profile_name)
     self.conn_cloudwatch = AWSConn.aws_conn_cloudwatch(self.region, self.profile_name)
     self.cloudformation_client = AWSConn.get_boto3_client('cloudformation', self.region, self.profile_name, session)
-    self.exit_error_code = 2
     self.creation_wait = creation_wait
     self.ready_wait = ready_wait
     self.health_wait = health_wait
@@ -67,8 +67,7 @@ class RollingDeploy(object):
     try:
       ami_obj = self.conn_ec2.get_all_images(image_ids=ami_id)
     except Exception as e:
-      logging.error("Unable to get ami-id, please investigate: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Unable to get ami-id, please investigate: {0}".format(e))
     return ami_obj[0]
 
   def wait_ami_availability(self, ami_id, timer=20):
@@ -80,8 +79,7 @@ class RollingDeploy(object):
         logging.info("AMI {0} is ready".format(ami_id))
         return True
       elif time() > timeout:
-        logging.error("AMI {0} is not ready after {1} minutes, please investigate".format(ami_id, timer))
-        exit(self.exit_error_code)
+        raise Exception("AMI {0} is not ready after {1} minutes, please investigate".format(ami_id, timer))
       else:
         logging.warning("AMI {0} is not ready yet, retrying in 30 seconds".format(ami_id))
         sleep(30)
@@ -96,8 +94,7 @@ class RollingDeploy(object):
       else:
         return self.conn_auto.get_all_groups()
     except Exception as e:
-      logging.error("Unable to pull down autoscale group: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Unable to pull down autoscale group: {0}".format(e))
 
   def get_asg_info(self):
     if self.stack_name:
@@ -135,8 +132,7 @@ class RollingDeploy(object):
       logging.info("Current desired count was changed from {0} to {1}".format(cur_count, new_count))
       return new_count
     except Exception as e:
-      logging.error("Please make sure the desired_state is set to either increase or decrease: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Please make sure the desired_state is set to either increase or decrease: {0}".format(e))
 
   def double_autoscale_instance_count(self, count):
     """ Multiply current count by 2 """
@@ -156,8 +152,7 @@ class RollingDeploy(object):
       )
       return True
     except Exception as e:
-      logging.error("Unable to update desired count, please investigate error: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Unable to update desired count, please investigate error: {0}".format(e))
 
   def get_instance_info(self, id_list):
       return self.conn_ec2.get_all_instances(instance_ids=id_list)
@@ -170,8 +165,7 @@ class RollingDeploy(object):
         ip_dict[instance.id] = instance.private_ip_address
       return ip_dict
     except Exception as e:
-      logging.error("Unable to get IP Addresses for instances: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Unable to get IP Addresses for instances: {0}".format(e))
 
   def validate_instance_list(self, instances):
       if len(instances) == 0:
@@ -292,8 +286,7 @@ class RollingDeploy(object):
       logging.info("Waiting maximum {0} minutes to terminate old instances.".format(self.calculate_max_minutes(self.only_new_wait[0], self.only_new_wait[1])))
       return retry_call(self.only_new_instances_elbs_check, tries=self.only_new_wait[0], delay=self.only_new_wait[1], logger=logging)
     except Exception as e:
-      logging.error("There are still old instances in the ELB. Please investigate.")
-      exit(self.exit_error_code)
+      raise Exception("There are still old instances in the ELB. Please investigate.")
 
   def tag_ami(self, ami_id, env):
     """ Tagging AMI with DEPLOYED tag """
@@ -309,8 +302,7 @@ class RollingDeploy(object):
       else:
         logging.info("No tagging necessary, already tagged with env: {0}".format(env))
     except Exception as e:
-      logging.error("Unable to tag ID, please investigate: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Unable to tag ID, please investigate: {0}".format(e))
 
   def gather_instance_info(self, group): #pragma: no cover
     instance_ids = self.get_all_instance_ids(group)
@@ -324,9 +316,8 @@ class RollingDeploy(object):
       logging.info("Trying for maximum {0} minutes to allow for instances to be created.".format(self.calculate_max_minutes(self.creation_wait[0], self.creation_wait[1])))
       new_instance_ids = retry_call(self.gather_instance_info, fargs=[group_name], tries=self.creation_wait[0], delay=self.creation_wait[1], logger=logging)
     except Exception as e:
-      logging.error("There are no instances in the group with build number {0}. Please ensure AMI was promoted.".format(self.build_number))
       self.set_autoscale_instance_desired_count(self.calculate_autoscale_desired_instance_count(self.asg_name, 'decrease'), self.asg_name)
-      exit(self.exit_error_code)
+      raise Exception("There are no instances in the group with build number {0}. Please ensure AMI was promoted.".format(self.build_number))
 
     # step 2: waiting for instances coming up and ready
     logging.info("Waiting maximum {0} minutes for instances to be ready.".format(self.calculate_max_minutes(self.ready_wait[0], self.ready_wait[1])))
@@ -363,8 +354,7 @@ class RollingDeploy(object):
         return self.get_cloudwatch_alarms_from_stack()
       all_cloud_watch_alarms = self.conn_cloudwatch.describe_alarms()
     except Exception as e:
-      logging.error("Error while retrieving the list of cloud-watch alarms. Error: {0}".format(e))
-      exit(self.exit_error_code)
+      raise Exception("Error while retrieving the list of cloud-watch alarms. Error: {0}".format(e))
     project_cloud_watch_alarms = [alarm.name for alarm in all_cloud_watch_alarms if self.project in alarm.name and self.env in alarm.name]
     if len(project_cloud_watch_alarms) == 0:
        logging.info("No cloud-watch alarm found")
@@ -378,8 +368,7 @@ class RollingDeploy(object):
         self.conn_cloudwatch.disable_alarm_actions(alarm)
         logging.info("Disabled cloud-watch alarm. {0}".format(alarm))
       except Exception as e:
-        logging.error("Unable to disable the cloud-watch alarm, please investigate: {0}".format(e))
-        exit(self.exit_error_code)
+        raise Exception("Unable to disable the cloud-watch alarm, please investigate: {0}".format(e))
 
   def enable_project_cloudwatch_alarms(self):
     """ Enable all the cloud watch alarms """
@@ -390,8 +379,7 @@ class RollingDeploy(object):
         self.conn_cloudwatch.enable_alarm_actions(alarm)
         logging.info("Enabled cloud-watch alarm. {0}".format(alarm))
       except Exception as e:
-        logging.error("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
-        exit(self.exit_error_code)
+        raise Exception("Unable to enable the cloud-watch alarm, please investigate: {0}".format(e))
 
   def get_target_group(self, asg_group):
     target_groups = self.asg.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_group])['AutoScalingGroups'][0]['TargetGroupARNs']
@@ -408,8 +396,7 @@ class RollingDeploy(object):
     return self.build_number in current_build_numbers
 
   def stop_deploy(self, message='an error has occurred', e=None, error_code=2):
-    logging.error('{0}: {1}'.format(message, e))
-    exit(error_code)
+    raise Exception('{0}: {1}'.format(message, e))
 
   def deploy(self): # pragma: no cover
     """ Rollin Rollin Rollin, Rawhide! """
@@ -442,8 +429,8 @@ class RollingDeploy(object):
         logging.info("Removed {0} from autoscale group".format(instance_id))
       except:
         logging.warning('Failed to remove instance: {0}.'.format(instance_id))
-    logging.error("REVERT COMPLETE!")
-    exit(self.exit_error_code)
+    # raise so main can handle
+    raise Exception('REVERT COMPLETE')
 
 
 def get_args(): # pragma: no cover
@@ -462,6 +449,7 @@ def get_args(): # pragma: no cover
   parser.add_argument('-o', '--only-new-wait', action='store', dest='only_new_wait', help='Wait time for old ec2 instances to terminate', type=int, nargs=2, default=[10, 30])
   parser.add_argument('-A', '--asg-logical-name', action='store', dest='asg_logical_name', help='ASG Logical Name from CFN', type=str)
   parser.add_argument('-L', '--load_balancer', action='store', dest='load_balancer', help='LoadBalancerName', type=str)
+  parser.add_argument('-D', '--debug', action='store_true', help='If set, do not re-enable alarms on failure. Useful for debugging only.')
   return parser.parse_args()
 
 
@@ -471,7 +459,25 @@ def main(): # pragma: no cover
   deployObj = RollingDeploy(args.env, args.project, args.build_number, args.ami_id, args.profile, args.config,
                             args.stack_name, args.force_redeploy, None, args.creation_wait, args.ready_wait,
                             args.health_wait, args.only_new_wait, args.asg_logical_name, args.load_balancer)
-  deployObj.deploy()
+
+  # support graceful exit on sigint/sigterm
+  def signal_handler(signum, frame):
+    # defined here to encapsulate deployObj for graceful exit
+    deployObj.enable_project_cloudwatch_alarms()
+    exit(2)
+  signal.signal(signal.SIGINT, signal_handler)
+  signal.signal(signal.SIGTERM, signal_handler)
+
+  try:
+    deployObj.deploy()
+  except Exception as e:
+    logging.error(str(e))
+    # don't auto recover if running in debug mode
+    if not args.debug:
+      # ensure we leave alarms in good state on failure
+      deployObj.enable_project_cloudwatch_alarms()
+    # for backward compatability
+    exit(2)
 
 
 if __name__ == "__main__": # pragma: no cover
