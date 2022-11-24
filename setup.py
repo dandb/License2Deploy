@@ -26,7 +26,7 @@ setup(
         'botocore==1.12.123',
         'boto==2.49.0',
         'boto3==1.9.123',
-        'PyYAML==5.1',
+        'PyYAML==5.4',
         'retry==0.9.2',
         'decorator==4.4.2'
     ],
